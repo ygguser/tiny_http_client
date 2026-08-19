@@ -321,7 +321,7 @@ fn read_response<R: Read>(
 
     let header_bytes = &data[..header_end];
 
-    let body = data[header_end + 4..].to_vec();
+    let raw_body = &data[header_end + 4..];
 
     let header_text = std::str::from_utf8(header_bytes)?;
 
@@ -357,11 +357,127 @@ fn read_response<R: Read>(
         }
     }
 
+    /*
+     * HTTP/1.1 chunked transfer encoding.
+     *
+     * Example:
+     *
+     * 4\r\n
+     * Wiki\r\n
+     * 5\r\n
+     * pedia\r\n
+     * 0\r\n
+     * \r\n
+     *
+     * The chunk size is hexadecimal and is not part of the
+     * actual response body.
+     */
+    let body = if headers
+        .iter()
+        .any(|(key, value)| {
+            key.eq_ignore_ascii_case("Transfer-Encoding")
+                && value
+                    .split(',')
+                    .any(|encoding| {
+                        encoding.trim().eq_ignore_ascii_case("chunked")
+                    })
+        })
+    {
+        decode_chunked(raw_body)?
+    } else {
+        raw_body.to_vec()
+    };
+
     Ok(Response {
         status,
         headers,
         body,
     })
+}
+
+fn decode_chunked(
+    data: &[u8],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut body = Vec::new();
+    let mut pos = 0;
+
+    loop {
+        /*
+         * Find the end of the chunk-size line.
+         */
+        let line_end = find_crlf(&data[pos..])
+            .ok_or("invalid chunked response: chunk size not found")?;
+
+        let size_line = &data[pos..pos + line_end];
+
+        /*
+         * Ignore optional chunk extensions:
+         *
+         * 4;foo=bar
+         *
+         * Only the part before ';' is the hexadecimal size.
+         */
+        let size_text = match size_line.iter().position(|&b| b == b';') {
+            Some(index) => &size_line[..index],
+            None => size_line,
+        };
+
+        let size_text = std::str::from_utf8(size_text)?.trim();
+
+        let chunk_size = usize::from_str_radix(size_text, 16)
+            .map_err(|_| "invalid chunk size")?;
+
+        pos += line_end + 2;
+
+        /*
+         * Zero-sized chunk marks the end of the body.
+         */
+        if chunk_size == 0 {
+            /*
+             * A chunked response may contain trailer headers
+             * after the final zero-sized chunk.
+             *
+             * We don't need them, so simply stop here.
+             */
+            return Ok(body);
+        }
+
+        /*
+         * Make sure the complete chunk is available.
+         */
+        let chunk_end = pos
+            .checked_add(chunk_size)
+            .ok_or("chunk size overflow")?;
+
+        if chunk_end > data.len() {
+            return Err(
+                "invalid chunked response: incomplete chunk".into()
+            );
+        }
+
+        body.extend_from_slice(&data[pos..chunk_end]);
+
+        pos = chunk_end;
+
+        /*
+         * Every chunk-data section must be followed by CRLF.
+         */
+        if data.len() < pos + 2
+            || data[pos] != b'\r'
+            || data[pos + 1] != b'\n'
+        {
+            return Err(
+                "invalid chunked response: missing CRLF".into()
+            );
+        }
+
+        pos += 2;
+    }
+}
+
+fn find_crlf(data: &[u8]) -> Option<usize> {
+    data.windows(2)
+        .position(|window| window == b"\r\n")
 }
 
 fn find_header_end(data: &[u8]) -> Option<usize> {
