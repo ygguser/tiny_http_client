@@ -50,7 +50,7 @@ fn request(
 
     let config = Arc::new(config);
 
-    let server_name = url.host.as_str().try_into()?;
+    let server_name = rustls::pki_types::ServerName::try_from(url.host.clone())?;
 
     let connection = ClientConnection::new(config, server_name)?;
 
