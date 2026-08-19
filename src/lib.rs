@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 use std::time::Duration;
 
 use rustls::{
@@ -14,6 +14,16 @@ use webpki_roots::TLS_SERVER_ROOTS;
 
 const MAX_REDIRECTS: usize = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
+static RUSTLS_INIT: Once = Once::new();
+
+fn init_rustls() {
+    RUSTLS_INIT.call_once(|| {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect("Failed to install rustls crypto provider");
+    });
+}
 
 pub struct Response {
     pub status: u16,
@@ -55,6 +65,8 @@ pub fn get_with_headers(
     url: &str,
     headers: &[(&str, &str)],
 ) -> Result<Response, Box<dyn std::error::Error>> {
+    init_rustls();
+
     get_redirect(url, headers, 0)
 }
 
