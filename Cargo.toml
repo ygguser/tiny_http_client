@@ -1,17 +1,11 @@
 [package]
 name = "tiny_http_client"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 license = "MIT"
 description = "Tiny synchronous HTTP/HTTPS GET client"
 repository = "https://github.com/ygguser/tiny_http_client"
 
 [dependencies]
-rustls = {
-    version = "0.23",
-    default-features = false,
-    features = ["ring"]
-}
-
-rustls-pki-types = "1"
-webpki-roots = "1"
+rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
+webpki-roots = "0.26"
