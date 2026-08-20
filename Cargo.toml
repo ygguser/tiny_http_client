@@ -19,10 +19,8 @@ include = [
 default = []
 own-cert-list = []
 
-[dependencies]
+[target.'cfg(not(windows))'.dependencies]
 rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
-
-[target.'cfg(not(target_os = "windows"))'.dependencies]
 webpki-roots = { version = "0.26", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
