@@ -8,10 +8,10 @@ stack.
 
 The client uses:
 
-- `native-tls` on Windows, using the native Windows TLS implementation
-- `rustls` with `ring` on non-Windows platforms
-- `webpki-roots` for trusted CA roots on non-Windows platforms
-- Rust's standard networking and I/O APIs
+- native Windows TLS via [`native-tls`](https://crates.io/crates/native-tls) on Windows;
+- [`rustls`](https://crates.io/crates/rustls) with [`ring`](https://crates.io/crates/ring) on non-Windows platforms;
+- [`webpki-roots`](https://crates.io/crates/webpki-roots) for trusted CA roots on non-Windows platforms;
+- Rust's standard networking and I/O APIs.
 
 ## Features
 
@@ -56,12 +56,9 @@ Or use a specific revision:
 tiny_http_client = { git = "https://github.com/ygguser/tiny_http_client", rev = "26f03556e38417c1366ab86e08daeaebd95c7604" }
 ```
 
-By default, HTTPS connections use:
+By default, the crate uses the system-independent [webpki-roots](https://crates.io/crates/webpki-roots) certificate store on non-Windows platforms.
 
-- `rustls` with `webpki-roots` on non-Windows platforms;
-- `native-tls` with the native Windows TLS implementation (Schannel) on Windows.
-
-On Windows, the system Windows certificate store is used for certificate verification.
+On Windows, HTTPS connections use [`native-tls`](https://crates.io/crates/native-tls), which uses the native Windows TLS implementation and certificate store.
 
 ## CA certificate list
 
@@ -231,35 +228,31 @@ if let Some(content_type) = response.header("Content-Type") {
 
 ## HTTPS and TLS
 
-HTTPS connections use different TLS backends depending on the target platform:
+HTTPS connections use different TLS implementations depending on the target platform.
 
-- on non-Windows platforms, HTTPS is implemented using `rustls` with the `ring` cryptographic provider;
-- on Windows, HTTPS is implemented using `native-tls`, which uses the native Windows TLS implementation (Schannel).
+On Windows, HTTPS connections use [`native-tls`](https://crates.io/crates/native-tls), which provides access to the native Windows TLS implementation and certificate store.
 
-The `ring` crypto provider is initialized automatically when the first HTTPS request is made on non-Windows platforms.
+On non-Windows platforms, HTTPS connections use [`rustls`](https://crates.io/crates/rustls) with [`ring`](https://crates.io/crates/ring) as the cryptographic provider.
+
+On non-Windows platforms, the `ring` crypto provider is initialized automatically when the first request is made.
 
 ## Default certificate store
 
-By default:
+On non-Windows platforms, trusted root certificates are provided by [`webpki-roots`](https://crates.io/crates/webpki-roots).
 
-- on non-Windows platforms, trusted root certificates are provided by `webpki-roots`;
-- on Windows, `native-tls` uses the native Windows certificate store through Schannel.
-
-The Windows TLS implementation therefore uses the certificates configured in the Windows certificate store.
+On Windows, HTTPS connections use the native Windows certificate store through [`native-tls`](https://crates.io/crates/native-tls).
 
 ## Own certificate list
 
-When the `own-cert-list` feature is enabled, the certificate store is built from the `.der` files in the crate's `certs/` directory on non-Windows platforms.
+On non-Windows platforms, when the `own-cert-list` feature is enabled, the certificate store is built from the `.der` files in the crate's `certs/` directory.
 
-The `own-cert-list` feature is only applicable to the `rustls` backend and is therefore ignored on Windows.
+In this mode, `webpki-roots` is not used. The embedded certificates are used as the TLS trust anchors.
 
-On non-Windows platforms:
+On Windows, the `own-cert-list` feature has no effect. Windows HTTPS connections always use `native-tls` and the native Windows certificate store.
 
-- only certificates from the crate's `certs/` directory are used;
-- the normal `webpki-roots` certificate list is not used;
-- the embedded certificates are used as TLS trust anchors.
+The TLS connection performs normal server certificate verification against the selected root store.
 
-On Windows, HTTPS uses `native-tls` and the native Windows certificate store regardless of the `own-cert-list` feature.
+No client certificates are required.
 
 ## Redirects
 
@@ -276,6 +269,8 @@ The same timeout is also applied to socket reads and writes.
 ## Design goals
 
 The main goal of this crate is to provide a small dependency footprint and a simple API for applications that only need basic synchronous HTTP/HTTPS GET requests.
+
+The crate intentionally uses platform-specific TLS implementations to keep the Windows build small while using the native Windows certificate store.
 
 It intentionally does not attempt to implement a complete HTTP client.
 
