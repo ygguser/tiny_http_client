@@ -5,7 +5,7 @@ use std::path::PathBuf;
 fn main() {
     println!("cargo:rerun-if-changed=certs");
 
-    if env::var_os("CARGO_FEATURE_OWN_CERT_LIST").is_none() {
+    if env::var_os("CARGO_FEATURE_OWN_CERT_LIST").is_none() || cfg!(windows) {
         return;
     }
 
