@@ -84,7 +84,7 @@ When `own-cert-list` is enabled:
 
 The feature is intentionally disabled by default.
 
-## Certificate files
+### Certificate files
 
 Certificates used by `own-cert-list` are stored in: `certs/*.der`
 
@@ -92,7 +92,7 @@ Each file should contain one CA certificate in DER format.
 
 The certificate filenames are not important. The build script automatically finds all `.der` files in the `certs/` directory and generates the Rust source code required to embed them into the binary.
 
-## Generating the certificate list
+### Generating the certificate list
 
 The repository contains a `get-certs.sh` script for generating a minimal CA certificate list for a specific set of HTTPS hosts.
 
@@ -116,12 +116,12 @@ The script:
 7. saves it in the `certs/` directory.
 
 For example:
-
+```
 certs/
 ├── ISRG_Root_X1_96bcec06264976f3.der
 ├── USERTrust_ECC_Certification_Authority_4ff460d54b9c86da.der
 └── ...
-
+```
 The script does not blindly trust certificates received from the server. Server-provided certificates are used only to determine and verify the certificate chain. The root CA is extracted from the local system trust store.
 
 Run:
@@ -136,7 +136,7 @@ After updating the certificates, build the application with:
 ```bash
 cargo build --release --features own-cert-list
 ```
-## Why use an own certificate list?
+### Why use an own certificate list?
 
 Embedding only the root certificates required by an application can reduce the amount of CA data included in the binary and makes the trust store independent of the operating system.
 
@@ -268,7 +268,7 @@ requests.
 
 It intentionally does not attempt to implement a complete HTTP client.
 
-The crate currently does not provide:
+The crate currently does **not** provide:
 
 * asynchronous I/O
 * HTTP/2
