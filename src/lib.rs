@@ -1,16 +1,26 @@
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::sync::{Arc, Once};
 use std::time::Duration;
 
+#[cfg(not(windows))]
+use std::sync::{Arc, Once};
+
+#[cfg(not(windows))]
 use rustls::pki_types::ServerName;
+
+#[cfg(not(windows))]
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
+
+#[cfg(windows)]
+use native_tls::TlsConnector;
 
 const MAX_REDIRECTS: usize = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+#[cfg(not(windows))]
 static RUSTLS_INIT: Once = Once::new();
 
+#[cfg(not(windows))]
 fn init_rustls() {
     RUSTLS_INIT.call_once(|| {
         rustls::crypto::ring::default_provider()
@@ -19,7 +29,7 @@ fn init_rustls() {
     });
 }
 
-#[cfg(feature = "own-cert-list")]
+#[cfg(all(feature = "own-cert-list", not(windows)))]
 mod own_certs {
     include!(env!("TINY_HTTP_CLIENT_OWN_CERTS"));
 }
@@ -64,6 +74,7 @@ pub fn get_with_headers(
     url: &str,
     headers: &[(&str, &str)],
 ) -> Result<Response, Box<dyn std::error::Error>> {
+    #[cfg(not(windows))]
     init_rustls();
 
     get_redirect(url, headers, 0)
@@ -187,6 +198,33 @@ fn get_http(
     read_response(&mut stream)
 }
 
+#[cfg(windows)]
+fn get_https(
+    url: &ParsedUrl,
+    headers: &[(&str, &str)],
+) -> Result<Response, Box<dyn std::error::Error>> {
+    let addr = format!("{}:{}", url.host, url.port);
+
+    let socket_addr = addr
+        .to_socket_addrs()?
+        .next()
+        .ok_or("failed to resolve host")?;
+
+    let tcp = TcpStream::connect_timeout(&socket_addr, CONNECT_TIMEOUT)?;
+
+    tcp.set_read_timeout(Some(CONNECT_TIMEOUT))?;
+    tcp.set_write_timeout(Some(CONNECT_TIMEOUT))?;
+
+    let connector = TlsConnector::new()?;
+
+    let mut stream = connector.connect(&url.host, tcp)?;
+
+    write_request(&mut stream, &url.host, &url.path, headers)?;
+
+    read_response(&mut stream)
+}
+
+#[cfg(not(windows))]
 fn get_https(
     url: &ParsedUrl,
     headers: &[(&str, &str)],
@@ -226,6 +264,7 @@ fn get_https(
     read_response(&mut stream)
 }
 
+#[cfg(not(windows))]
 fn load_root_certificates(
 ) -> Result<RootCertStore, Box<dyn std::error::Error>> {
     let mut root_store = RootCertStore::empty();
@@ -245,22 +284,6 @@ fn load_root_certificates(
         use webpki_roots::TLS_SERVER_ROOTS;
 
         root_store.extend(TLS_SERVER_ROOTS.iter().cloned());
-    }
-
-    #[cfg(all(
-        not(feature = "own-cert-list"),
-        target_os = "windows"
-    ))]
-    {
-        let result = rustls_native_certs::load_native_certs();
-
-        for cert in result.certs {
-            root_store.add(cert)?;
-        }
-
-        if root_store.is_empty() {
-            return Err("no native root certificates found".into());
-        }
     }
 
     Ok(root_store)
@@ -417,7 +440,7 @@ fn decode_chunked(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
          */
         if chunk_size == 0 {
             /*
-             * A chunked response may contain trailer headers
+             * A chunked response may contain trailer 
              * after the final zero-sized chunk.
              *
              * We don't need them, so simply stop here.
