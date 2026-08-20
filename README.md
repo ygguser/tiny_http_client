@@ -8,9 +8,9 @@ stack.
 
 The client uses:
 
-- [`rustls`](https://crates.io/crates/rustls) for TLS
-- [`ring`](https://crates.io/crates/ring) as the TLS cryptographic provider
-- [`webpki-roots`](https://crates.io/crates/webpki-roots) for trusted CA roots
+- `native-tls` on Windows, using the native Windows TLS implementation
+- `rustls` with `ring` on non-Windows platforms
+- `webpki-roots` for trusted CA roots on non-Windows platforms
 - Rust's standard networking and I/O APIs
 
 ## Features
@@ -56,9 +56,12 @@ Or use a specific revision:
 tiny_http_client = { git = "https://github.com/ygguser/tiny_http_client", rev = "26f03556e38417c1366ab86e08daeaebd95c7604" }
 ```
 
-By default, the crate uses the system-independent [webpki-roots](https://crates.io/crates/webpki-roots) certificate store on non-Windows platforms.
+By default, HTTPS connections use:
 
-On Windows, the native Windows certificate store is used.
+- `rustls` with `webpki-roots` on non-Windows platforms;
+- `native-tls` with the native Windows TLS implementation (Schannel) on Windows.
+
+On Windows, the system Windows certificate store is used for certificate verification.
 
 ## CA certificate list
 
@@ -79,7 +82,7 @@ When `own-cert-list` is enabled:
 * only certificates from the crate's `certs/` directory are embedded;
 * the certificates are stored in DER format;
 * the normal `webpki-roots` certificate list is not used;
-* on Windows, the native Windows certificate store is not used;
+* on Windows, the feature has no effect and the native Windows certificate store is used;
 * the embedded certificates are used as the TLS trust anchors.
 
 The feature is intentionally disabled by default.
@@ -228,25 +231,35 @@ if let Some(content_type) = response.header("Content-Type") {
 
 ## HTTPS and TLS
 
-HTTPS connections are implemented using `rustls`.
+HTTPS connections use different TLS backends depending on the target platform:
 
-The client initializes the `ring` crypto provider automatically when the first request is made.
+- on non-Windows platforms, HTTPS is implemented using `rustls` with the `ring` cryptographic provider;
+- on Windows, HTTPS is implemented using `native-tls`, which uses the native Windows TLS implementation (Schannel).
+
+The `ring` crypto provider is initialized automatically when the first HTTPS request is made on non-Windows platforms.
 
 ## Default certificate store
 
-By default, trusted root certificates are provided by [webpki-roots](https://crates.io/crates/webpki-roots) on non-Windows platforms.
+By default:
 
-On Windows, the native Windows certificate store is used.
+- on non-Windows platforms, trusted root certificates are provided by `webpki-roots`;
+- on Windows, `native-tls` uses the native Windows certificate store through Schannel.
+
+The Windows TLS implementation therefore uses the certificates configured in the Windows certificate store.
 
 ## Own certificate list
 
-When the `own-cert-list` feature is enabled, the certificate store is built from the `.der` files in the crate's `certs/` directory.
+When the `own-cert-list` feature is enabled, the certificate store is built from the `.der` files in the crate's `certs/` directory on non-Windows platforms.
 
-In this mode, neither `webpki-roots` nor the Windows native certificate store is used.
+The `own-cert-list` feature is only applicable to the `rustls` backend and is therefore ignored on Windows.
 
-The TLS connection performs normal server certificate verification against the selected root store.
+On non-Windows platforms:
 
-No client certificates are required.
+- only certificates from the crate's `certs/` directory are used;
+- the normal `webpki-roots` certificate list is not used;
+- the embedded certificates are used as TLS trust anchors.
+
+On Windows, HTTPS uses `native-tls` and the native Windows certificate store regardless of the `own-cert-list` feature.
 
 ## Redirects
 
@@ -262,9 +275,7 @@ The same timeout is also applied to socket reads and writes.
 
 ## Design goals
 
-The main goal of this crate is to provide a small dependency footprint and a
-simple API for applications that only need basic synchronous HTTP/HTTPS GET
-requests.
+The main goal of this crate is to provide a small dependency footprint and a simple API for applications that only need basic synchronous HTTP/HTTPS GET requests.
 
 It intentionally does not attempt to implement a complete HTTP client.
 
@@ -319,8 +330,7 @@ match tiny_http_client::get("https://example.com/") {
 
 ## Non-2xx responses
 
-Responses with a status code outside the 200..=299 range are returned as
-errors.
+Responses with a status code outside the 200..=299 range are returned as errors.
 
 ## License
 
