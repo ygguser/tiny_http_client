@@ -9,13 +9,11 @@ fn main() {
         return;
     }
 
-    let manifest_dir =
-        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
 
     let certs_dir = manifest_dir.join("certs");
 
-    let out_dir =
-        PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
     let output = out_dir.join("own_certs.rs");
 
@@ -40,9 +38,7 @@ fn main() {
             continue;
         }
 
-        let path_str = path
-            .to_str()
-            .expect("certificate path is not valid UTF-8");
+        let path_str = path.to_str().expect("certificate path is not valid UTF-8");
 
         entries.push(path_str.to_owned());
     }
@@ -58,13 +54,9 @@ fn main() {
 
     let mut code = String::new();
 
-    code.push_str(
-        "use rustls::pki_types::CertificateDer;\n\n"
-    );
+    code.push_str("use rustls::pki_types::CertificateDer;\n\n");
 
-    code.push_str(
-        "pub fn load() -> Vec<CertificateDer<'static>> {\n"
-    );
+    code.push_str("pub fn load() -> Vec<CertificateDer<'static>> {\n");
 
     code.push_str("    vec![\n");
 
@@ -77,8 +69,7 @@ fn main() {
     code.push_str("    ]\n");
     code.push_str("}\n");
 
-    fs::write(&output, code)
-        .expect("failed to write generated certificate list");
+    fs::write(&output, code).expect("failed to write generated certificate list");
 
     println!(
         "cargo:rustc-env=TINY_HTTP_CLIENT_OWN_CERTS={}",

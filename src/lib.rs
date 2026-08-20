@@ -3,13 +3,8 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Once};
 use std::time::Duration;
 
-use rustls::{
-    ClientConfig,
-    ClientConnection,
-    RootCertStore,
-    StreamOwned,
-};
 use rustls::pki_types::ServerName;
+use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
 const MAX_REDIRECTS: usize = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -107,22 +102,14 @@ fn get_redirect(
             if let Some(location) = response.header("Location") {
                 let next_url = resolve_redirect(&parsed_url, location)?;
 
-                return get_redirect(
-                    &next_url,
-                    headers,
-                    redirect_count + 1,
-                );
+                return get_redirect(&next_url, headers, redirect_count + 1);
             }
         }
         _ => {}
     }
 
     if !(200..300).contains(&response.status) {
-        return Err(format!(
-            "HTTP request failed: {}",
-            response.status
-        )
-        .into());
+        return Err(format!("HTTP request failed: {}", response.status).into());
     }
 
     Ok(response)
@@ -150,9 +137,7 @@ fn parse_url(input: &str) -> Result<ParsedUrl, Box<dyn std::error::Error>> {
     };
 
     let (host, port) = if let Some(host_part) = authority.strip_prefix('[') {
-        let end = host_part
-            .find(']')
-            .ok_or("invalid IPv6 address")?;
+        let end = host_part.find(']').ok_or("invalid IPv6 address")?;
 
         let host = &host_part[..end];
 
@@ -166,16 +151,10 @@ fn parse_url(input: &str) -> Result<ParsedUrl, Box<dyn std::error::Error>> {
     } else {
         match authority.rfind(':') {
             Some(pos) if authority[pos + 1..].parse::<u16>().is_ok() => {
-                (
-                    authority[..pos].to_string(),
-                    authority[pos + 1..].parse()?,
-                )
+                (authority[..pos].to_string(), authority[pos + 1..].parse()?)
             }
 
-            _ => (
-                authority.to_string(),
-                if https { 443 } else { 80 },
-            ),
+            _ => (authority.to_string(), if https { 443 } else { 80 }),
         }
     };
 
@@ -198,20 +177,12 @@ fn get_http(
         .next()
         .ok_or("failed to resolve host")?;
 
-    let mut stream = TcpStream::connect_timeout(
-        &socket_addr,
-        CONNECT_TIMEOUT,
-    )?;
+    let mut stream = TcpStream::connect_timeout(&socket_addr, CONNECT_TIMEOUT)?;
 
     stream.set_read_timeout(Some(CONNECT_TIMEOUT))?;
     stream.set_write_timeout(Some(CONNECT_TIMEOUT))?;
 
-    write_request(
-        &mut stream,
-        &url.host,
-        &url.path,
-        headers,
-    )?;
+    write_request(&mut stream, &url.host, &url.path, headers)?;
 
     read_response(&mut stream)
 }
@@ -227,10 +198,7 @@ fn get_https(
         .next()
         .ok_or("failed to resolve host")?;
 
-    let tcp = TcpStream::connect_timeout(
-        &socket_addr,
-        CONNECT_TIMEOUT,
-    )?;
+    let tcp = TcpStream::connect_timeout(&socket_addr, CONNECT_TIMEOUT)?;
 
     tcp.set_read_timeout(Some(CONNECT_TIMEOUT))?;
     tcp.set_write_timeout(Some(CONNECT_TIMEOUT))?;
@@ -249,19 +217,11 @@ fn get_https(
      */
     let server_name = ServerName::try_from(url.host.clone())?;
 
-    let connection = ClientConnection::new(
-        Arc::new(config),
-        server_name,
-    )?;
+    let connection = ClientConnection::new(Arc::new(config), server_name)?;
 
     let mut stream = StreamOwned::new(connection, tcp);
 
-    write_request(
-        &mut stream,
-        &url.host,
-        &url.path,
-        headers,
-    )?;
+    write_request(&mut stream, &url.host, &url.path, headers)?;
 
     read_response(&mut stream)
 }
@@ -275,8 +235,6 @@ fn load_root_certificates(
         for cert in own_certs::load() {
             root_store.add(cert)?;
         }
-
-        return Ok(root_store);
     }
 
     #[cfg(all(
@@ -287,8 +245,6 @@ fn load_root_certificates(
         use webpki_roots::TLS_SERVER_ROOTS;
 
         root_store.extend(TLS_SERVER_ROOTS.iter().cloned());
-
-        return Ok(root_store);
     }
 
     #[cfg(all(
@@ -303,13 +259,11 @@ fn load_root_certificates(
         }
 
         if root_store.is_empty() {
-            return Err(
-                "no native root certificates found".into()
-            );
+            return Err("no native root certificates found".into());
         }
-
-        return Ok(root_store);
     }
+
+    Ok(root_store)
 }
 
 fn write_request<S: Write>(
@@ -325,8 +279,7 @@ fn write_request<S: Write>(
          User-Agent: peers_updater\r\n\
          Accept: */*\r\n\
          Connection: close\r\n",
-        path,
-        host
+        path, host
     )?;
 
     for (name, value) in headers {
@@ -342,12 +295,7 @@ fn write_request<S: Write>(
             return Err("invalid HTTP header".into());
         }
 
-        write!(
-            stream,
-            "{}: {}\r\n",
-            name,
-            value
-        )?;
+        write!(stream, "{}: {}\r\n", name, value)?;
     }
 
     write!(stream, "\r\n")?;
@@ -357,15 +305,12 @@ fn write_request<S: Write>(
     Ok(())
 }
 
-fn read_response<R: Read>(
-    stream: &mut R,
-) -> Result<Response, Box<dyn std::error::Error>> {
+fn read_response<R: Read>(stream: &mut R) -> Result<Response, Box<dyn std::error::Error>> {
     let mut data = Vec::new();
 
     stream.read_to_end(&mut data)?;
 
-    let header_end = find_header_end(&data)
-        .ok_or("invalid HTTP response: headers not found")?;
+    let header_end = find_header_end(&data).ok_or("invalid HTTP response: headers not found")?;
 
     let header_bytes = &data[..header_end];
 
@@ -381,9 +326,7 @@ fn read_response<R: Read>(
 
     let mut status_parts = status_line.splitn(3, ' ');
 
-    let _http_version = status_parts
-        .next()
-        .ok_or("invalid HTTP status line")?;
+    let _http_version = status_parts.next().ok_or("invalid HTTP status line")?;
 
     let status = status_parts
         .next()
@@ -420,17 +363,12 @@ fn read_response<R: Read>(
      * The chunk size is hexadecimal and is not part of the
      * actual response body.
      */
-    let body = if headers
-        .iter()
-        .any(|(key, value)| {
-            key.eq_ignore_ascii_case("Transfer-Encoding")
-                && value
-                    .split(',')
-                    .any(|encoding| {
-                        encoding.trim().eq_ignore_ascii_case("chunked")
-                    })
-        })
-    {
+    let body = if headers.iter().any(|(key, value)| {
+        key.eq_ignore_ascii_case("Transfer-Encoding")
+            && value
+                .split(',')
+                .any(|encoding| encoding.trim().eq_ignore_ascii_case("chunked"))
+    }) {
         decode_chunked(raw_body)?
     } else {
         raw_body.to_vec()
@@ -443,9 +381,7 @@ fn read_response<R: Read>(
     })
 }
 
-fn decode_chunked(
-    data: &[u8],
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn decode_chunked(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut body = Vec::new();
     let mut pos = 0;
 
@@ -453,8 +389,8 @@ fn decode_chunked(
         /*
          * Find the end of the chunk-size line.
          */
-        let line_end = find_crlf(&data[pos..])
-            .ok_or("invalid chunked response: chunk size not found")?;
+        let line_end =
+            find_crlf(&data[pos..]).ok_or("invalid chunked response: chunk size not found")?;
 
         let size_line = &data[pos..pos + line_end];
 
@@ -472,8 +408,7 @@ fn decode_chunked(
 
         let size_text = std::str::from_utf8(size_text)?.trim();
 
-        let chunk_size = usize::from_str_radix(size_text, 16)
-            .map_err(|_| "invalid chunk size")?;
+        let chunk_size = usize::from_str_radix(size_text, 16).map_err(|_| "invalid chunk size")?;
 
         pos += line_end + 2;
 
@@ -493,14 +428,10 @@ fn decode_chunked(
         /*
          * Make sure the complete chunk is available.
          */
-        let chunk_end = pos
-            .checked_add(chunk_size)
-            .ok_or("chunk size overflow")?;
+        let chunk_end = pos.checked_add(chunk_size).ok_or("chunk size overflow")?;
 
         if chunk_end > data.len() {
-            return Err(
-                "invalid chunked response: incomplete chunk".into()
-            );
+            return Err("invalid chunked response: incomplete chunk".into());
         }
 
         body.extend_from_slice(&data[pos..chunk_end]);
@@ -510,13 +441,8 @@ fn decode_chunked(
         /*
          * Every chunk-data section must be followed by CRLF.
          */
-        if data.len() < pos + 2
-            || data[pos] != b'\r'
-            || data[pos + 1] != b'\n'
-        {
-            return Err(
-                "invalid chunked response: missing CRLF".into()
-            );
+        if data.len() < pos + 2 || data[pos] != b'\r' || data[pos + 1] != b'\n' {
+            return Err("invalid chunked response: missing CRLF".into());
         }
 
         pos += 2;
@@ -524,13 +450,11 @@ fn decode_chunked(
 }
 
 fn find_crlf(data: &[u8]) -> Option<usize> {
-    data.windows(2)
-        .position(|window| window == b"\r\n")
+    data.windows(2).position(|window| window == b"\r\n")
 }
 
 fn find_header_end(data: &[u8]) -> Option<usize> {
-    data.windows(4)
-        .position(|window| window == b"\r\n\r\n")
+    data.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
 fn resolve_redirect(
@@ -544,9 +468,7 @@ fn resolve_redirect(
      *
      * Location: https://objects.githubusercontent.com/...
      */
-    if location.starts_with("http://")
-        || location.starts_with("https://")
-    {
+    if location.starts_with("http://") || location.starts_with("https://") {
         return Ok(location.to_string());
     }
 
