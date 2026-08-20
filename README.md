@@ -234,7 +234,7 @@ The client initializes the `ring` crypto provider automatically when the first r
 
 ## Default certificate store
 
-By default, trusted root certificates are provided by [webpki-roots]{https://crates.io/crates/webpki-roots} on non-Windows platforms.
+By default, trusted root certificates are provided by [webpki-roots](https://crates.io/crates/webpki-roots) on non-Windows platforms.
 
 On Windows, the native Windows certificate store is used.
 
