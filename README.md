@@ -27,6 +27,7 @@ The client uses:
 - `Transfer-Encoding: chunked`
 - IPv4 and IPv6 addresses
 - Connection and I/O timeouts
+- Optional built-in CA certificate list
 - No asynchronous runtime
 - Small and simple API
 
@@ -54,6 +55,96 @@ Or use a specific revision:
 [dependencies]
 tiny_http_client = { git = "https://github.com/ygguser/tiny_http_client", rev = "26f03556e38417c1366ab86e08daeaebd95c7604" }
 ```
+
+By default, the crate uses the system-independent [webpki-roots](https://crates.io/crates/webpki-roots) certificate store on non-Windows platforms.
+
+On Windows, the native Windows certificate store is used.
+
+## CA certificate list
+
+The crate supports an optional `own-cert-list` feature that embeds a selected set of CA root certificates directly into the binary.
+
+This can be useful for small applications that only connect to a known set of HTTPS services and do not need the complete system or `webpki-roots` certificate store.
+
+Enable the feature in `Cargo.toml`:
+```toml
+[dependencies]
+tiny_http_client = {
+    git = "https://github.com/ygguser/tiny_http_client",
+    features = ["own-cert-list"]
+}
+```
+When `own-cert-list` is enabled:
+
+* only certificates from the crate's `certs/` directory are embedded;
+* the certificates are stored in DER format;
+* the normal `webpki-roots` certificate list is not used;
+* on Windows, the native Windows certificate store is not used;
+* the embedded certificates are used as the TLS trust anchors.
+
+The feature is intentionally disabled by default.
+
+## Certificate files
+
+Certificates used by `own-cert-list` are stored in: `certs/*.der`
+
+Each file should contain one CA certificate in DER format.
+
+The certificate filenames are not important. The build script automatically finds all `.der` files in the `certs/` directory and generates the Rust source code required to embed them into the binary.
+
+## Generating the certificate list
+
+The repository contains a `get-certs.sh` script for generating a minimal CA certificate list for a specific set of HTTPS hosts.
+
+The hosts are configured near the beginning of the script:
+```bash
+HOSTS="
+github.com
+api.github.com
+objects.githubusercontent.com
+github-releases.githubusercontent.com
+"
+```
+The script:
+
+1. connects to each HTTPS host;
+2. obtains the certificates sent by the server;
+3. verifies the certificate chain using the system OpenSSL trust store;
+4. determines the root CA of the verified chain;
+5. extracts the root CA from the system trust store;
+6. converts it to DER format;
+7. saves it in the `certs/` directory.
+
+For example:
+
+certs/
+├── ISRG_Root_X1_96bcec06264976f3.der
+├── USERTrust_ECC_Certification_Authority_4ff460d54b9c86da.der
+└── ...
+
+The script does not blindly trust certificates received from the server. Server-provided certificates are used only to determine and verify the certificate chain. The root CA is extracted from the local system trust store.
+
+Run:
+
+```bash
+./get-certs.sh
+```
+
+The script requires OpenSSL and uses the system CA store to verify the certificate chains.
+
+After updating the certificates, build the application with:
+```bash
+cargo build --release --features own-cert-list
+```
+## Why use an own certificate list?
+
+Embedding only the root certificates required by an application can reduce the amount of CA data included in the binary and makes the trust store independent of the operating system.
+
+It is especially useful for small standalone utilities that communicate only with a limited number of HTTPS services.
+
+For example, an application that only communicates with GitHub may only need the root CAs required by GitHub and its release/download infrastructure rather than a complete collection of public root certificates.
+
+The application should regenerate the certificate list when the HTTPS services it uses change their certificate chains or when the relevant root certificates change.
 
 ## Basic usage
 
@@ -139,13 +230,21 @@ if let Some(content_type) = response.header("Content-Type") {
 
 HTTPS connections are implemented using `rustls`.
 
-The client initializes the `ring` crypto provider automatically when the first
-request is made.
+The client initializes the `ring` crypto provider automatically when the first request is made.
 
-The trusted root certificates are provided by `webpki-roots`.
+## Default certificate store
 
-The TLS connection performs normal server certificate verification based on the
-trusted root store.
+By default, trusted root certificates are provided by [webpki-roots]{https://crates.io/crates/webpki-roots} on non-Windows platforms.
+
+On Windows, the native Windows certificate store is used.
+
+## Own certificate list
+
+When the `own-cert-list` feature is enabled, the certificate store is built from the `.der` files in the crate's `certs/` directory.
+
+In this mode, neither `webpki-roots` nor the Windows native certificate store is used.
+
+The TLS connection performs normal server certificate verification against the selected root store.
 
 No client certificates are required.
 
@@ -174,7 +273,7 @@ The crate currently does not provide:
 * asynchronous I/O
 * HTTP/2
 * HTTP/3
-*proxy support
+* proxy support
 * cookies
 * connection pooling
 * multipart requests
