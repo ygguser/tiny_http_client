@@ -5,7 +5,32 @@ edition = "2021"
 license = "MIT"
 description = "Tiny synchronous HTTP/HTTPS GET client"
 repository = "https://github.com/ygguser/tiny_http_client"
+build = "build.rs"
+include = [
+    "src/**/*",
+    "certs/*.der",
+    "build.rs",
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+]
+
+[features]
+default = []
+own-cert-list = []
 
 [dependencies]
 rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
 webpki-roots = { version = "0.26", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+rustls-native-certs = "0.8"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"

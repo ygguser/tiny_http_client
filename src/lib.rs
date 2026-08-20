@@ -10,7 +10,6 @@ use rustls::{
     StreamOwned,
 };
 use rustls::pki_types::ServerName;
-use webpki_roots::TLS_SERVER_ROOTS;
 
 const MAX_REDIRECTS: usize = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -23,6 +22,11 @@ fn init_rustls() {
             .install_default()
             .expect("Failed to install rustls crypto provider");
     });
+}
+
+#[cfg(feature = "own-cert-list")]
+mod own_certs {
+    include!(env!("TINY_HTTP_CLIENT_OWN_CERTS"));
 }
 
 pub struct Response {
@@ -231,9 +235,7 @@ fn get_https(
     tcp.set_read_timeout(Some(CONNECT_TIMEOUT))?;
     tcp.set_write_timeout(Some(CONNECT_TIMEOUT))?;
 
-    let mut root_store = RootCertStore::empty();
-
-    root_store.extend(TLS_SERVER_ROOTS.iter().cloned());
+    let root_store = load_root_certificates()?;
 
     let config = ClientConfig::builder()
         .with_root_certificates(root_store)
@@ -262,6 +264,52 @@ fn get_https(
     )?;
 
     read_response(&mut stream)
+}
+
+fn load_root_certificates(
+) -> Result<RootCertStore, Box<dyn std::error::Error>> {
+    let mut root_store = RootCertStore::empty();
+
+    #[cfg(feature = "own-cert-list")]
+    {
+        for cert in own_certs::load() {
+            root_store.add(cert)?;
+        }
+
+        return Ok(root_store);
+    }
+
+    #[cfg(all(
+        not(feature = "own-cert-list"),
+        not(target_os = "windows")
+    ))]
+    {
+        use webpki_roots::TLS_SERVER_ROOTS;
+
+        root_store.extend(TLS_SERVER_ROOTS.iter().cloned());
+
+        return Ok(root_store);
+    }
+
+    #[cfg(all(
+        not(feature = "own-cert-list"),
+        target_os = "windows"
+    ))]
+    {
+        let result = rustls_native_certs::load_native_certs();
+
+        for cert in result.certs {
+            root_store.add(cert)?;
+        }
+
+        if root_store.is_empty() {
+            return Err(
+                "no native root certificates found".into()
+            );
+        }
+
+        return Ok(root_store);
+    }
 }
 
 fn write_request<S: Write>(
