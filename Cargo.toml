@@ -3,21 +3,22 @@ name = "tiny_http_client"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Tiny synchronous HTTP/HTTPS GET client"
+description = "Tiny synchronous HTTP/HTTPS client"
 repository = "https://github.com/ygguser/tiny_http_client"
 build = "build.rs"
 include = [
     "src/**/*",
     "certs/*.der",
     "build.rs",
-    "macos/network_tls.c",
     "Cargo.toml",
     "LICENSE",
     "README.md",
 ]
 
 [features]
-default = []
+default = ["http-get"]
+http-get = []
+http-post = []
 own-cert-list = []
 
 [target.'cfg(target_os = "linux")'.dependencies]
