@@ -37,7 +37,7 @@ fn build_own_cert_list() {
 
     if entries.is_empty() {
         panic!(
-            "own-cert-list is enabled, but no *.der certificates were found in {}",
+            "linux-own-cert-list is enabled, but no *.der certificates were found in {}",
             certs_dir.display()
         );
     }
@@ -67,7 +67,21 @@ fn build_own_cert_list() {
 fn main() {
     println!("cargo:rerun-if-changed=certs");
 
-    if env::var_os("CARGO_FEATURE_OWN_CERT_LIST").is_some() && cfg!(target_os = "linux") {
-        build_own_cert_list();
+    #[cfg(target_os = "linux")]
+    {
+        let linux_own_cert_list =
+            env::var_os("CARGO_FEATURE_LINUX_OWN_CERT_LIST").is_some();
+        let linux_native_tls =
+            env::var_os("CARGO_FEATURE_LINUX_NATIVE_TLS").is_some();
+
+        if linux_own_cert_list && linux_native_tls {
+            panic!(
+                "features `linux-native-tls` and `linux-own-cert-list` cannot be enabled at the same time"
+            );
+        }
+
+        if linux_own_cert_list {
+            build_own_cert_list();
+        }
     }
 }

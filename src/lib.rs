@@ -2,25 +2,44 @@ use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    not(feature = "linux-native-tls")
+))]
 use std::sync::{Arc, Once};
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    not(feature = "linux-native-tls")
+))]
 use rustls::pki_types::ServerName;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    not(feature = "linux-native-tls")
+))]
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", feature = "linux-native-tls")
+))]
 use native_tls::TlsConnector;
 
 const MAX_REDIRECTS: usize = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    not(feature = "linux-native-tls")
+))]
 static RUSTLS_INIT: Once = Once::new();
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    not(feature = "linux-native-tls")
+))]
 fn init_rustls() {
     RUSTLS_INIT.call_once(|| {
         rustls::crypto::ring::default_provider()
@@ -29,7 +48,11 @@ fn init_rustls() {
     });
 }
 
-#[cfg(all(feature = "own-cert-list", target_os = "linux"))]
+#[cfg(all(
+    feature = "linux-own-cert-list",
+    target_os = "linux",
+    not(feature = "linux-native-tls")
+))]
 mod own_certs {
     include!(env!("TINY_HTTP_CLIENT_OWN_CERTS"));
 }
@@ -76,7 +99,10 @@ pub fn get_with_headers(
     url: &str,
     headers: &[(&str, &str)],
 ) -> Result<Response, Box<dyn std::error::Error>> {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(
+        target_os = "linux",
+        not(feature = "linux-native-tls")
+    ))]
     init_rustls();
 
     request_redirect("GET", url, None, headers, 0)
@@ -118,7 +144,10 @@ pub fn post_with_headers(
     body: &[u8],
     headers: &[(&str, &str)],
 ) -> Result<Response, Box<dyn std::error::Error>> {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(
+        target_os = "linux",
+        not(feature = "linux-native-tls")
+    ))]
     init_rustls();
 
     request_redirect("POST", url, Some(body), headers, 0)
@@ -296,7 +325,11 @@ fn request_http(
     read_response(&mut stream)
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", feature = "linux-native-tls")
+))]
 fn request_https(
     url: &ParsedUrl,
     method: &str,
@@ -334,18 +367,21 @@ fn request_https(
     read_response(&mut stream)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    not(feature = "linux-native-tls")
+))]
 fn load_root_certificates() -> Result<RootCertStore, Box<dyn std::error::Error>> {
     let mut root_store = RootCertStore::empty();
 
-    #[cfg(feature = "own-cert-list")]
+    #[cfg(feature = "linux-own-cert-list")]
     {
         for cert in own_certs::load() {
             root_store.add(cert)?;
         }
     }
 
-    #[cfg(not(feature = "own-cert-list"))]
+    #[cfg(not(feature = "linux-own-cert-list"))]
     {
         root_store.extend(
             webpki_roots::TLS_SERVER_ROOTS
@@ -357,7 +393,10 @@ fn load_root_certificates() -> Result<RootCertStore, Box<dyn std::error::Error>>
     Ok(root_store)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    not(feature = "linux-native-tls")
+))]
 fn request_https(
     url: &ParsedUrl,
     method: &str,

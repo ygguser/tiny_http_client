@@ -7,6 +7,7 @@ A small synchronous HTTP/HTTPS GET/POST client written in Rust.
 The client uses:
 
 - native Windows / macOS TLS via [`native-tls`](https://crates.io/crates/native-tls);
+- optional Linux native TLS via [`native-tls`](https://crates.io/crates/native-tls);
 - [`rustls`](https://crates.io/crates/rustls) with [`ring`](https://crates.io/crates/ring) and [`webpki-roots`](https://crates.io/crates/webpki-roots) on Linux;
 - Rust's standard networking and I/O APIs.
 
@@ -16,16 +17,20 @@ The crate provides the following Cargo features:
 
 - `http-get` — enables HTTP GET requests;
 - `http-post` — enables HTTP POST requests;
-- `own-cert-list` — enables an embedded CA certificate list on Linux.
+- `linux-native-tls` — enables `native-tls` on Linux and uses the operating system certificate store;
+- `linux-own-cert-list` — enables an embedded CA certificate list on Linux.
 
-By default, only `http-get` is enabled:
+By default, only `http-get` is enabled.
+
+On Windows and macOS, `native-tls` is always used. On Linux, `rustls` is used by default.
 
 ```toml
 [features]
 default = ["http-get"]
 http-get = []
 http-post = []
-own-cert-list = []
+linux-native-tls = ["dep:native-tls"]
+linux-own-cert-list = []
 ```
 
 To enable both GET and POST:
@@ -64,9 +69,24 @@ Or use a specific revision:
 tiny_http_client = { git = "https://github.com/ygguser/tiny_http_client", rev = "26f03556e38417c1366ab86e08daeaebd95c7604" }
 ```
 
+## Linux native TLS
+
+On Linux, enable the `linux-native-tls` feature to use `native-tls` and the operating system certificate store:
+
+```toml
+[dependencies]
+tiny_http_client = {
+    git = "https://github.com/ygguser/tiny_http_client",
+    default-features = false,
+    features = ["http-get", "linux-native-tls"]
+}
+```
+
+The `linux-native-tls` and `linux-own-cert-list` features are mutually exclusive.
+
 ## CA certificate list
 
-The crate supports an optional `own-cert-list` feature that embeds a selected set of CA root certificates directly into the binary.
+The crate supports an optional `linux-own-cert-list` feature that embeds a selected set of CA root certificates directly into the binary.
 
 This can be useful for small applications that only connect to a known set of HTTPS services and do not need the complete system or `webpki-roots` certificate store.
 
@@ -75,10 +95,10 @@ Enable the feature in `Cargo.toml`:
 [dependencies]
 tiny_http_client = {
     git = "https://github.com/ygguser/tiny_http_client",
-    features = ["own-cert-list"]
+    features = ["linux-own-cert-list"]
 }
 ```
-When `own-cert-list` is enabled:
+When `linux-own-cert-list` is enabled:
 
 * only certificates from the crate's `certs/` directory are embedded;
 * the certificates are stored in DER format;
@@ -90,7 +110,7 @@ The feature is intentionally disabled by default.
 
 ### Certificate files
 
-Certificates used by `own-cert-list` are stored in: `certs/*.der`
+Certificates used by `linux-own-cert-list` are stored in: `certs/*.der`
 
 Each file should contain one CA certificate in DER format.
 
@@ -138,7 +158,7 @@ The script requires OpenSSL and uses the system CA store to verify the certifica
 
 After updating the certificates, build the application with:
 ```bash
-cargo build --release --features own-cert-list
+cargo build --release --features linux-own-cert-list
 ```
 ### Why use an own certificate list?
 
@@ -317,17 +337,27 @@ On Linux, trusted root certificates are provided by [`webpki-roots`](https://cra
 
 On Windows / macOS, HTTPS connections use the native OS certificate store through [`native-tls`](https://crates.io/crates/native-tls).
 
-## Own certificate list
+## Linux TLS options
 
-On Linux, when the `own-cert-list` feature is enabled, the certificate store is built from the `.der` files in the crate's `certs/` directory.
+On Windows and macOS, HTTPS connections always use `native-tls` and the native operating system certificate store.
 
-In this mode, `webpki-roots` is not used. The embedded certificates are used as the TLS trust anchors.
+On Linux, TLS implementation can be selected using features:
 
-On Windows / macOS, the `own-cert-list` feature has no effect. Windows / macOS HTTPS connections always use `native-tls` and the native OS certificate store.
+- no Linux TLS feature — `rustls` with Mozilla root certificates from `webpki-roots`;
+- `linux-own-cert-list` — `rustls` with CA certificates embedded from the crate's `certs/` directory;
+- `linux-native-tls` — `native-tls` with the operating system certificate store.
+
+The `linux-native-tls` and `linux-own-cert-list` features are mutually exclusive.
 
 The TLS connection performs normal server certificate verification against the selected root store.
 
 No client certificates are required.
+
+## Own certificate list
+
+On Linux, when the `linux-own-cert-list` feature is enabled, the certificate store is built from the `.der` files in the crate's `certs/` directory.
+
+In this mode, `webpki-roots` is not used. The embedded certificates are used as the TLS trust anchors.
 
 ## Redirects
 
