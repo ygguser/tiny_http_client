@@ -3,15 +3,55 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+#[cfg(target_os = "macos")]
 fn build_macos_network_tls() {
-    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    use std::env;
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let manifest_dir = PathBuf::from(
+        env::var_os("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR is not set"),
+    );
+
+    let out_dir = PathBuf::from(
+        env::var_os("OUT_DIR")
+            .expect("OUT_DIR is not set"),
+    );
+
+    let target = env::var("TARGET")
+        .expect("TARGET is not set");
+
     let source = manifest_dir.join("macos/network_tls.c");
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let object = out_dir.join("network_tls.o");
     let library = out_dir.join("libtiny_network_tls.a");
 
+    /*
+     * Rust targets:
+     *
+     *   x86_64-apple-darwin
+     *   aarch64-apple-darwin
+     *
+     * clang understands these target triples directly.
+     */
+    let clang_target = match target.as_str() {
+        "x86_64-apple-darwin" => "x86_64-apple-darwin",
+        "aarch64-apple-darwin" => "aarch64-apple-darwin",
+        _ => panic!("unsupported macOS target: {}", target),
+    };
+
+    // Compile C source into an object file for the same architecture
+    // as the Rust target.
     let status = Command::new("xcrun")
-        .args(["--sdk", "macosx", "clang", "-fblocks", "-c"])
+        .args([
+            "--sdk",
+            "macosx",
+            "clang",
+            "-target",
+            clang_target,
+            "-fblocks",
+            "-c",
+        ])
         .arg(&source)
         .args(["-o"])
         .arg(&object)
@@ -22,8 +62,14 @@ fn build_macos_network_tls() {
         panic!("failed to compile macOS Network.framework TLS shim");
     }
 
+    // Create a static library containing the object file.
     let status = Command::new("xcrun")
-        .args(["--sdk", "macosx", "ar", "rcs"])
+        .args([
+            "--sdk",
+            "macosx",
+            "ar",
+            "rcs",
+        ])
         .arg(&library)
         .arg(&object)
         .status()
@@ -33,10 +79,23 @@ fn build_macos_network_tls() {
         panic!("failed to create macOS Network.framework TLS library");
     }
 
-    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    // Tell Cargo where the static library is located.
+    println!(
+        "cargo:rustc-link-search=native={}",
+        out_dir.display()
+    );
+
+    // Link our static library.
     println!("cargo:rustc-link-lib=static=tiny_network_tls");
+
+    // Link Apple's Network.framework.
     println!("cargo:rustc-link-lib=framework=Network");
-    println!("cargo:rerun-if-changed={}", source.display());
+
+    // Re-run build.rs when the C source changes.
+    println!(
+        "cargo:rerun-if-changed={}",
+        source.display()
+    );
 }
 
 fn build_own_cert_list() {
