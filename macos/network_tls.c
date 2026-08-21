@@ -1,5 +1,4 @@
 #include <Network/Network.h>
-#include <Security/Security.h>
 #include <dispatch/dispatch.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -30,12 +29,19 @@ typedef struct {
 
 static void tiny_print_error(const char *where, nw_error_t error) {
     if (!error) {
-        fprintf(stderr, "tiny_network: %s: unknown error\n", where);
+        fprintf(
+            stderr,
+            "tiny_network: %s: no error object\n",
+            where
+        );
         return;
     }
 
-    nw_error_domain_t domain = nw_error_get_error_domain(error);
-    int code = nw_error_get_error_code(error);
+    nw_error_domain_t domain =
+        nw_error_get_error_domain(error);
+
+    int code =
+        nw_error_get_error_code(error);
 
     fprintf(
         stderr,
@@ -62,9 +68,10 @@ static bool tiny_append(
     size_t required = state->len + len;
 
     if (required > state->capacity) {
-        size_t capacity = state->capacity
-            ? state->capacity
-            : 8192;
+        size_t capacity =
+            state->capacity
+                ? state->capacity
+                : 8192;
 
         while (capacity < required) {
             if (capacity > SIZE_MAX / 2) {
@@ -75,10 +82,11 @@ static bool tiny_append(
             capacity *= 2;
         }
 
-        uint8_t *new_data = realloc(
-            state->data,
-            capacity
-        );
+        uint8_t *new_data =
+            realloc(
+                state->data,
+                capacity
+            );
 
         if (!new_data) {
             return false;
@@ -110,6 +118,27 @@ static void tiny_state_changed(
     tiny_state_t *state = context;
 
     switch (state_value) {
+        case nw_connection_state_invalid:
+            fprintf(
+                stderr,
+                "tiny_network: connection invalid\n"
+            );
+            break;
+
+        case nw_connection_state_waiting:
+            tiny_print_error(
+                "connection waiting",
+                error
+            );
+            break;
+
+        case nw_connection_state_preparing:
+            fprintf(
+                stderr,
+                "tiny_network: connection preparing\n"
+            );
+            break;
+
         case nw_connection_state_ready:
             fprintf(
                 stderr,
@@ -153,27 +182,6 @@ static void tiny_state_changed(
 
             dispatch_semaphore_signal(
                 state->semaphore
-            );
-            break;
-
-        case nw_connection_state_preparing:
-            fprintf(
-                stderr,
-                "tiny_network: connection preparing\n"
-            );
-            break;
-
-        case nw_connection_state_waiting:
-            tiny_print_error(
-                "connection waiting",
-                error
-            );
-            break;
-
-        case nw_connection_state_invalid:
-            fprintf(
-                stderr,
-                "tiny_network: connection invalid\n"
             );
             break;
 
@@ -246,24 +254,25 @@ static void tiny_receive(
             }
 
             if (content != NULL) {
-                bool ok = dispatch_data_apply(
-                    content,
-                    ^bool(
-                        dispatch_data_t region,
-                        size_t offset,
-                        const void *buffer,
-                        size_t size
-                    ) {
-                        (void)region;
-                        (void)offset;
+                bool ok =
+                    dispatch_data_apply(
+                        content,
+                        ^bool(
+                            dispatch_data_t region,
+                            size_t offset,
+                            const void *buffer,
+                            size_t size
+                        ) {
+                            (void)region;
+                            (void)offset;
 
-                        return tiny_append(
-                            state,
-                            buffer,
-                            size
-                        );
-                    }
-                );
+                            return tiny_append(
+                                state,
+                                buffer,
+                                size
+                            );
+                        }
+                    );
 
                 if (!ok) {
                     state->error =
@@ -322,21 +331,21 @@ int tiny_network_https_get(
 
     char port_string[6];
 
-    int port_length = snprintf(
-        port_string,
-        sizeof(port_string),
-        "%u",
-        (unsigned)port
-    );
+    int port_length =
+        snprintf(
+            port_string,
+            sizeof(port_string),
+            "%u",
+            (unsigned)port
+        );
 
     if (port_length <= 0 ||
         (size_t)port_length >= sizeof(port_string)) {
         return TINY_NETWORK_INVALID_ARGUMENT;
     }
 
-    char *host_string = malloc(
-        host_len + 1
-    );
+    char *host_string =
+        malloc(host_len + 1);
 
     if (!host_string) {
         return TINY_NETWORK_ALLOCATION_FAILED;
@@ -374,9 +383,6 @@ int tiny_network_https_get(
         return TINY_NETWORK_CONNECTION_FAILED;
     }
 
-    /*
-     * Create TLS over TCP.
-     */
     nw_parameters_t parameters =
         nw_parameters_create_secure_tcp(
             NW_PARAMETERS_DEFAULT_CONFIGURATION,
@@ -386,7 +392,7 @@ int tiny_network_https_get(
     if (!parameters) {
         fprintf(
             stderr,
-            "tiny_network: failed to create TLS parameters\n"
+            "tiny_network: failed to create secure TCP parameters\n"
         );
 
         nw_release(endpoint);
@@ -394,57 +400,6 @@ int tiny_network_https_get(
 
         return TINY_NETWORK_CONNECTION_FAILED;
     }
-
-    /*
-     * Explicitly set TLS server name (SNI).
-     *
-     * This is important for HTTPS connections to hosts such as
-     * api.github.com.
-     */
-    nw_protocol_stack_t protocol_stack =
-        nw_parameters_copy_default_protocol_stack(
-            parameters
-        );
-
-    if (!protocol_stack) {
-        fprintf(
-            stderr,
-            "tiny_network: failed to get protocol stack\n"
-        );
-
-        nw_release(parameters);
-        nw_release(endpoint);
-        free(host_string);
-
-        return TINY_NETWORK_CONNECTION_FAILED;
-    }
-
-    nw_protocol_options_t tls_options =
-        nw_protocol_stack_copy_transport_protocol(
-            protocol_stack
-        );
-
-    if (!tls_options) {
-        fprintf(
-            stderr,
-            "tiny_network: failed to get TLS options\n"
-        );
-
-        nw_release(protocol_stack);
-        nw_release(parameters);
-        nw_release(endpoint);
-        free(host_string);
-
-        return TINY_NETWORK_CONNECTION_FAILED;
-    }
-
-    nw_tls_options_set_server_name(
-        tls_options,
-        host_string
-    );
-
-    nw_release(tls_options);
-    nw_release(protocol_stack);
 
     nw_connection_t connection =
         nw_connection_create(
@@ -454,13 +409,14 @@ int tiny_network_https_get(
 
     nw_release(parameters);
     nw_release(endpoint);
-    free(host_string);
 
     if (!connection) {
         fprintf(
             stderr,
             "tiny_network: failed to create connection\n"
         );
+
+        free(host_string);
 
         return TINY_NETWORK_CONNECTION_FAILED;
     }
@@ -475,6 +431,8 @@ int tiny_network_https_get(
         .semaphore = dispatch_semaphore_create(0),
         .connection = connection,
     };
+
+    free(host_string);
 
     if (!state.semaphore) {
         nw_release(connection);
@@ -512,10 +470,12 @@ int tiny_network_https_get(
 
     nw_connection_start(connection);
 
-    dispatch_time_t timeout = dispatch_time(
-        DISPATCH_TIME_NOW,
-        (int64_t)timeout_seconds * NSEC_PER_SEC
-    );
+    dispatch_time_t timeout =
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            (int64_t)timeout_seconds *
+                NSEC_PER_SEC
+        );
 
     if (dispatch_semaphore_wait(
             state.semaphore,
