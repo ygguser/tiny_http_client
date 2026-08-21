@@ -11,7 +11,7 @@ use rustls::pki_types::ServerName;
 #[cfg(target_os = "linux")]
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 use native_tls::TlsConnector;
 
 const MAX_REDIRECTS: usize = 5;
@@ -198,7 +198,7 @@ fn get_http(
     read_response(&mut stream)
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn get_https(
     url: &ParsedUrl,
     headers: &[(&str, &str)],
