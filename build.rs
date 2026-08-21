@@ -1,6 +1,8 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 #[cfg(target_os = "macos")]
@@ -163,7 +165,8 @@ fn build_own_cert_list() {
 fn main() {
     println!("cargo:rerun-if-changed=certs");
 
-    if cfg!(target_os = "macos") {
+    #[cfg(target_os = "macos")]
+    {
         build_macos_network_tls();
     }
 
