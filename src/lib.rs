@@ -154,8 +154,6 @@ fn request_redirect(
     };
 
     /*
-     * GitHub uses redirects when downloading release assets.
-     *
      * We follow all standard HTTP redirects:
      *
      * 301 Moved Permanently
