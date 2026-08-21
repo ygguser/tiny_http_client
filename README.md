@@ -1,42 +1,53 @@
 # tiny_http_client
 
-A small synchronous HTTP/HTTPS GET client written in Rust.
+A small synchronous HTTP/HTTPS GET/POST client written in Rust.
 
 `tiny_http_client` is designed for small applications and utilities that need basic HTTP/HTTPS functionality without pulling in a full-featured HTTP client stack.
 
 The client uses:
 
-- native Windows / macOS TLS via [`native-tls`](https://crates.io/crates/native-tls) on Windows / macOS;
+- native Windows / macOS TLS via [`native-tls`](https://crates.io/crates/native-tls);
 - [`rustls`](https://crates.io/crates/rustls) with [`ring`](https://crates.io/crates/ring) and [`webpki-roots`](https://crates.io/crates/webpki-roots) on Linux;
 - Rust's standard networking and I/O APIs.
 
 ## Features
 
-- HTTP GET
-- HTTPS GET
-- TLS certificate verification
-- HTTP request headers
-- HTTP response headers
-- HTTP status codes
-- HTTP redirects
-- Relative and absolute redirect URLs
-- Protocol-relative redirects
-- `Transfer-Encoding: chunked`
-- IPv4 and IPv6 addresses
-- Connection and I/O timeouts
-- Optional built-in CA certificate list
-- No asynchronous runtime
-- Small and simple API
+The crate provides the following Cargo features:
 
-Supported HTTP redirects:
+- `http-get` — enables HTTP GET requests;
+- `http-post` — enables HTTP POST requests;
+- `own-cert-list` — enables an embedded CA certificate list on Linux.
 
-- `301 Moved Permanently`
-- `302 Found`
-- `303 See Other`
-- `307 Temporary Redirect`
-- `308 Permanent Redirect`
+By default, only `http-get` is enabled:
 
-Up to 5 redirects are followed automatically.
+```toml
+[features]
+default = ["http-get"]
+http-get = []
+http-post = []
+own-cert-list = []
+```
+
+To enable both GET and POST:
+
+```toml
+[dependencies]
+tiny_http_client = {
+    git = "https://github.com/ygguser/tiny_http_client",
+    features = ["http-get", "http-post"]
+}
+```
+
+If only POST is required:
+
+```toml
+[dependencies]
+tiny_http_client = {
+    git = "https://github.com/ygguser/tiny_http_client",
+    default-features = false,
+    features = ["http-post"]
+}
+```
 
 ## Installation
 
@@ -52,11 +63,6 @@ Or use a specific revision:
 [dependencies]
 tiny_http_client = { git = "https://github.com/ygguser/tiny_http_client", rev = "26f03556e38417c1366ab86e08daeaebd95c7604" }
 ```
-
-By default, Linux builds use the system-independent [webpki-roots](https://crates.io/crates/webpki-roots) certificate store.
-
-On Windows / macOS, HTTPS connections use [`native-tls`](https://crates.io/crates/native-tls), which uses the native OS TLS implementation and certificate store.
-
 
 ## CA certificate list
 
@@ -144,7 +150,7 @@ For example, an application that only communicates with GitHub may only need the
 
 The application should regenerate the certificate list when the HTTPS services it uses change their certificate chains or when the relevant root certificates change.
 
-## Basic usage
+## Basic GET usage
 
 ```rust
 use tiny_http_client::get;
@@ -160,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Request headers
+## GET request headers
 
 Use `get_with_headers()` when custom HTTP headers are required:
 
@@ -183,8 +189,87 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
-Header names and values containing CR or LF characters are rejected to prevent
-HTTP header injection.
+Header names and values containing CR or LF characters are rejected to prevent HTTP header injection.
+
+## POST request
+
+POST requests are enabled by the `http-post` feature.
+
+The basic `post()` function sends a request body:
+
+```rust
+use tiny_http_client::post;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let response = post(
+        "https://example.com/api",
+        b"hello=world",
+    )?;
+
+    println!("HTTP status: {}", response.status);
+
+    println!("{}", response.as_str()?);
+
+    Ok(())
+}
+```
+
+The request body is provided as a byte slice, so binary data can also be sent.
+
+### POST request with headers
+
+Use `post_with_headers()` when custom HTTP headers are required:
+
+```rust
+use tiny_http_client::post_with_headers;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let response = post_with_headers(
+        "https://example.com/api",
+        &[
+            ("Content-Type", "application/x-www-form-urlencoded"),
+            ("User-Agent", "my-client"),
+        ],
+        b"hello=world",
+    )?;
+
+    println!("HTTP status: {}", response.status);
+
+    println!("{}", response.as_str()?);
+
+    Ok(())
+}
+```
+
+### JSON POST request
+
+JSON can be sent by providing the appropriate `Content-Type` header:
+
+```rust
+use tiny_http_client::post_with_headers;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let body = br#"{"name":"test","value":123}"#;
+
+
+    let response = post_with_headers(
+        "https://example.com/api",
+        &[
+            ("Content-Type", "application/json"),
+            ("Accept", "application/json"),
+        ],
+        body,
+    )?;
+
+    println!("HTTP status: {}", response.status);
+
+    println!("{}", response.as_str()?);
+
+    Ok(())
+}
+```
+
+The crate does not provide JSON serialization or deserialization. Applications can use any JSON library they prefer, or construct JSON manually when appropriate.
 
 ## Response
 
@@ -208,12 +293,14 @@ println!("{}", response.status);
 ```rust
 let data: &[u8] = response.as_bytes();
 ```
+
 ## Response body as UTF-8
 
 ```rust
 let text = response.as_str()?;
 println!("{}", text);
 ```
+
 ## Response headers
 
 Use `header()` to retrieve a header without worrying about capitalization:
@@ -244,7 +331,19 @@ No client certificates are required.
 
 ## Redirects
 
-Redirects are followed automatically.
+Supported HTTP redirects:
+
+* 301 Moved Permanently
+* 302 Found
+* 303 See Other
+* 307 Temporary Redirect
+* 308 Permanent Redirect
+
+Up to 5 redirects are followed automatically.
+
+```rust
+const MAX_REDIRECTS: usize = 5;
+```
 
 ## Timeouts
 
@@ -256,9 +355,15 @@ The same timeout is also applied to socket reads and writes.
 
 ## Design goals
 
-The main goal of this crate is to provide a small dependency footprint and a simple API for applications that only need basic synchronous HTTP/HTTPS GET requests.
+The main goal of this crate is to provide a small dependency footprint and a simple API for applications that only need basic synchronous HTTP/HTTPS GET and POST requests.
 
-The crate intentionally uses platform-specific TLS implementations: native Windows TLS on Windows, rustls on Linux, and Apple's Network.framework on macOS. This keeps each platform's binary small and lets the operating system provide its native TLS implementation and trust store where available.
+The crate intentionally uses platform-specific TLS implementations:
+
+* native TLS on Windows;
+* native TLS on macOS;
+* rustls on Linux.
+
+This keeps each platform's implementation simple and lets Windows and macOS use their native TLS implementations and certificate stores.
 
 It intentionally does not attempt to implement a complete HTTP client.
 
@@ -271,7 +376,7 @@ The crate currently does **not** provide:
 * cookies
 * connection pooling
 * multipart requests
-* POST/PUT/PATCH/DELETE helpers
+* PUT/PATCH/DELETE helpers
 * automatic content compression
 * automatic decompression
 * authentication helpers
