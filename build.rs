@@ -69,10 +69,8 @@ fn main() {
 
     #[cfg(target_os = "linux")]
     {
-        let linux_own_cert_list =
-            env::var_os("CARGO_FEATURE_LINUX_OWN_CERT_LIST").is_some();
-        let linux_native_tls =
-            env::var_os("CARGO_FEATURE_LINUX_NATIVE_TLS").is_some();
+        let linux_own_cert_list = env::var_os("CARGO_FEATURE_LINUX_OWN_CERT_LIST").is_some();
+        let linux_native_tls = env::var_os("CARGO_FEATURE_LINUX_NATIVE_TLS").is_some();
 
         if linux_own_cert_list && linux_native_tls {
             panic!(

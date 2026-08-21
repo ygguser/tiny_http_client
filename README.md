@@ -331,12 +331,6 @@ if let Some(content_type) = response.header("Content-Type") {
 }
 ```
 
-## Default certificate store
-
-On Linux, trusted root certificates are provided by [`webpki-roots`](https://crates.io/crates/webpki-roots).
-
-On Windows / macOS, HTTPS connections use the native OS certificate store through [`native-tls`](https://crates.io/crates/native-tls).
-
 ## Linux TLS options
 
 On Windows and macOS, HTTPS connections always use `native-tls` and the native operating system certificate store.
@@ -352,12 +346,6 @@ The `linux-native-tls` and `linux-own-cert-list` features are mutually exclusive
 The TLS connection performs normal server certificate verification against the selected root store.
 
 No client certificates are required.
-
-## Own certificate list
-
-On Linux, when the `linux-own-cert-list` feature is enabled, the certificate store is built from the `.der` files in the crate's `certs/` directory.
-
-In this mode, `webpki-roots` is not used. The embedded certificates are used as the TLS trust anchors.
 
 ## Redirects
 
