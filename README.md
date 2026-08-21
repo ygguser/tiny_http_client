@@ -6,7 +6,7 @@ A small synchronous HTTP/HTTPS GET client written in Rust.
 
 The client uses:
 
-- native Windows / macOS TLS via [`native-tls`](https://crates.io/crates/native-tls) on Windows;
+- native Windows / macOS TLS via [`native-tls`](https://crates.io/crates/native-tls) on Windows / macOS;
 - [`rustls`](https://crates.io/crates/rustls) with [`ring`](https://crates.io/crates/ring) and [`webpki-roots`](https://crates.io/crates/webpki-roots) on Linux;
 - Rust's standard networking and I/O APIs.
 
