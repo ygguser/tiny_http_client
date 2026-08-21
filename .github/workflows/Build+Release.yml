@@ -65,7 +65,7 @@ jobs:
             --method POST \
             "/repos/${GITHUB_REPOSITORY}/releases" \
             --field "tag_name=${VERSION}" \
-            --field "name=Peers updater v. ${VERSION}" \
+            --field "name=tiny_http_client v. ${VERSION}" \
             --field "body=${RELEASE_NOTES}" \
             --field "draft=true" \
             --field "prerelease=false")
