@@ -6,9 +6,8 @@ A small synchronous HTTP/HTTPS GET client written in Rust.
 
 The client uses:
 
-- native Windows TLS via [`native-tls`](https://crates.io/crates/native-tls) on Windows;
+- native Windows / macOS TLS via [`native-tls`](https://crates.io/crates/native-tls) on Windows;
 - [`rustls`](https://crates.io/crates/rustls) with [`ring`](https://crates.io/crates/ring) and [`webpki-roots`](https://crates.io/crates/webpki-roots) on Linux;
-- Apple's `Network.framework` and system trust store on macOS;
 - Rust's standard networking and I/O APIs.
 
 ## Features
@@ -56,9 +55,8 @@ tiny_http_client = { git = "https://github.com/ygguser/tiny_http_client", rev = 
 
 By default, Linux builds use the system-independent [webpki-roots](https://crates.io/crates/webpki-roots) certificate store.
 
-On Windows, HTTPS connections use [`native-tls`](https://crates.io/crates/native-tls), which uses the native Windows TLS implementation and certificate store.
+On Windows / macOS, HTTPS connections use [`native-tls`](https://crates.io/crates/native-tls), which uses the native OS TLS implementation and certificate store.
 
-On macOS, HTTPS connections use Apple's `Network.framework`, including the native TLS implementation and macOS trust store.
 
 ## CA certificate list
 
@@ -79,8 +77,7 @@ When `own-cert-list` is enabled:
 * only certificates from the crate's `certs/` directory are embedded;
 * the certificates are stored in DER format;
 * the normal `webpki-roots` certificate list is not used;
-* on Windows, the feature has no effect and the native Windows certificate store is used;
-* on macOS, the feature has no effect and the macOS system trust store is used;
+* on Windows / macOS, the feature has no effect and the native OS certificate store is used;
 * on Linux, the embedded certificates are used as the TLS trust anchors.
 
 The feature is intentionally disabled by default.
@@ -227,25 +224,11 @@ if let Some(content_type) = response.header("Content-Type") {
 }
 ```
 
-## HTTPS and TLS
-
-HTTPS connections use different TLS implementations depending on the target platform.
-
-On Windows, HTTPS connections use [`native-tls`](https://crates.io/crates/native-tls), which provides access to the native Windows TLS implementation and certificate store.
-
-On Linux, HTTPS connections use [`rustls`](https://crates.io/crates/rustls) with [`ring`](https://crates.io/crates/ring) as the cryptographic provider.
-
-On Linux, the `ring` crypto provider is initialized automatically when the first request is made.
-
-On macOS, HTTPS connections use Apple's `Network.framework` and the macOS system TLS and certificate trust implementation.
-
 ## Default certificate store
 
 On Linux, trusted root certificates are provided by [`webpki-roots`](https://crates.io/crates/webpki-roots).
 
-On Windows, HTTPS connections use the native Windows certificate store through [`native-tls`](https://crates.io/crates/native-tls).
-
-On macOS, HTTPS connections use the native macOS trust store through `Network.framework`.
+On Windows / macOS, HTTPS connections use the native OS certificate store through [`native-tls`](https://crates.io/crates/native-tls).
 
 ## Own certificate list
 
@@ -253,9 +236,7 @@ On Linux, when the `own-cert-list` feature is enabled, the certificate store is 
 
 In this mode, `webpki-roots` is not used. The embedded certificates are used as the TLS trust anchors.
 
-On Windows, the `own-cert-list` feature has no effect. Windows HTTPS connections always use `native-tls` and the native Windows certificate store.
-
-On macOS, the `own-cert-list` feature has no effect. macOS HTTPS connections always use the system trust store through `Network.framework`.
+On Windows / macOS, the `own-cert-list` feature has no effect. Windows / macOS HTTPS connections always use `native-tls` and the native OS certificate store.
 
 The TLS connection performs normal server certificate verification against the selected root store.
 
