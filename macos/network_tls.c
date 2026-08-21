@@ -1,4 +1,5 @@
 #include <Network/Network.h>
+#include <Security/Security.h>
 #include <dispatch/dispatch.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -27,7 +28,29 @@ typedef struct {
     nw_connection_t connection;
 } tiny_state_t;
 
-static bool tiny_append(tiny_state_t *state, const uint8_t *data, size_t len) {
+static void tiny_print_error(const char *where, nw_error_t error) {
+    if (!error) {
+        fprintf(stderr, "tiny_network: %s: unknown error\n", where);
+        return;
+    }
+
+    nw_error_domain_t domain = nw_error_get_error_domain(error);
+    int code = nw_error_get_error_code(error);
+
+    fprintf(
+        stderr,
+        "tiny_network: %s: domain=%d code=%d\n",
+        where,
+        (int)domain,
+        code
+    );
+}
+
+static bool tiny_append(
+    tiny_state_t *state,
+    const uint8_t *data,
+    size_t len
+) {
     if (len == 0) {
         return true;
     }
@@ -37,18 +60,26 @@ static bool tiny_append(tiny_state_t *state, const uint8_t *data, size_t len) {
     }
 
     size_t required = state->len + len;
+
     if (required > state->capacity) {
-        size_t capacity = state->capacity ? state->capacity : 8192;
+        size_t capacity = state->capacity
+            ? state->capacity
+            : 8192;
 
         while (capacity < required) {
             if (capacity > SIZE_MAX / 2) {
                 capacity = required;
                 break;
             }
+
             capacity *= 2;
         }
 
-        uint8_t *new_data = realloc(state->data, capacity);
+        uint8_t *new_data = realloc(
+            state->data,
+            capacity
+        );
+
         if (!new_data) {
             return false;
         }
@@ -57,8 +88,14 @@ static bool tiny_append(tiny_state_t *state, const uint8_t *data, size_t len) {
         state->capacity = capacity;
     }
 
-    memcpy(state->data + state->len, data, len);
+    memcpy(
+        state->data + state->len,
+        data,
+        len
+    );
+
     state->len += len;
+
     return true;
 }
 
@@ -74,23 +111,70 @@ static void tiny_state_changed(
 
     switch (state_value) {
         case nw_connection_state_ready:
+            fprintf(
+                stderr,
+                "tiny_network: connection ready\n"
+            );
+
             state->ready = true;
-            dispatch_semaphore_signal(state->semaphore);
+
+            dispatch_semaphore_signal(
+                state->semaphore
+            );
             break;
 
         case nw_connection_state_failed:
-            (void)error;
+            tiny_print_error(
+                "connection failed",
+                error
+            );
+
             if (state->error == TINY_NETWORK_OK) {
-                state->error = TINY_NETWORK_CONNECTION_FAILED;
+                state->error =
+                    TINY_NETWORK_CONNECTION_FAILED;
             }
-            dispatch_semaphore_signal(state->semaphore);
+
+            dispatch_semaphore_signal(
+                state->semaphore
+            );
             break;
 
         case nw_connection_state_cancelled:
-            if (!state->complete && state->error == TINY_NETWORK_OK) {
-                state->error = TINY_NETWORK_CONNECTION_FAILED;
+            fprintf(
+                stderr,
+                "tiny_network: connection cancelled\n"
+            );
+
+            if (!state->complete &&
+                state->error == TINY_NETWORK_OK) {
+                state->error =
+                    TINY_NETWORK_CONNECTION_FAILED;
             }
-            dispatch_semaphore_signal(state->semaphore);
+
+            dispatch_semaphore_signal(
+                state->semaphore
+            );
+            break;
+
+        case nw_connection_state_preparing:
+            fprintf(
+                stderr,
+                "tiny_network: connection preparing\n"
+            );
+            break;
+
+        case nw_connection_state_waiting:
+            tiny_print_error(
+                "connection waiting",
+                error
+            );
+            break;
+
+        case nw_connection_state_invalid:
+            fprintf(
+                stderr,
+                "tiny_network: connection invalid\n"
+            );
             break;
 
         default:
@@ -107,10 +191,25 @@ static void tiny_send_complete(
     tiny_state_t *state = context;
 
     if (error != NULL) {
-        state->error = TINY_NETWORK_SEND_FAILED;
-        dispatch_semaphore_signal(state->semaphore);
+        tiny_print_error(
+            "send",
+            error
+        );
+
+        state->error =
+            TINY_NETWORK_SEND_FAILED;
+
+        dispatch_semaphore_signal(
+            state->semaphore
+        );
+
         return;
     }
+
+    fprintf(
+        stderr,
+        "tiny_network: request sent\n"
+    );
 
     tiny_receive(state);
 }
@@ -122,38 +221,75 @@ static void tiny_receive(
         state->connection,
         1,
         64 * 1024,
-        ^(dispatch_data_t content,
-          nw_content_context_t context,
-          bool is_complete,
-          nw_error_t error) {
+        ^(
+            dispatch_data_t content,
+            nw_content_context_t context,
+            bool is_complete,
+            nw_error_t error
+        ) {
             (void)context;
 
             if (error != NULL) {
-                state->error = TINY_NETWORK_RECEIVE_FAILED;
-                dispatch_semaphore_signal(state->semaphore);
+                tiny_print_error(
+                    "receive",
+                    error
+                );
+
+                state->error =
+                    TINY_NETWORK_RECEIVE_FAILED;
+
+                dispatch_semaphore_signal(
+                    state->semaphore
+                );
+
                 return;
             }
 
             if (content != NULL) {
                 bool ok = dispatch_data_apply(
                     content,
-                    ^bool(dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
+                    ^bool(
+                        dispatch_data_t region,
+                        size_t offset,
+                        const void *buffer,
+                        size_t size
+                    ) {
                         (void)region;
                         (void)offset;
-                        return tiny_append(state, buffer, size);
+
+                        return tiny_append(
+                            state,
+                            buffer,
+                            size
+                        );
                     }
                 );
 
                 if (!ok) {
-                    state->error = TINY_NETWORK_ALLOCATION_FAILED;
-                    dispatch_semaphore_signal(state->semaphore);
+                    state->error =
+                        TINY_NETWORK_ALLOCATION_FAILED;
+
+                    dispatch_semaphore_signal(
+                        state->semaphore
+                    );
+
                     return;
                 }
             }
 
             if (is_complete) {
+                fprintf(
+                    stderr,
+                    "tiny_network: response complete (%zu bytes)\n",
+                    state->len
+                );
+
                 state->complete = true;
-                dispatch_semaphore_signal(state->semaphore);
+
+                dispatch_semaphore_signal(
+                    state->semaphore
+                );
+
                 return;
             }
 
@@ -172,7 +308,12 @@ int tiny_network_https_get(
     size_t *response_len,
     uint32_t timeout_seconds
 ) {
-    if (!host || host_len == 0 || !request || request_len == 0 || !response || !response_len) {
+    if (!host ||
+        host_len == 0 ||
+        !request ||
+        request_len == 0 ||
+        !response ||
+        !response_len) {
         return TINY_NETWORK_INVALID_ARGUMENT;
     }
 
@@ -180,40 +321,147 @@ int tiny_network_https_get(
     *response_len = 0;
 
     char port_string[6];
-    int port_length = snprintf(port_string, sizeof(port_string), "%u", (unsigned)port);
-    if (port_length <= 0 || (size_t)port_length >= sizeof(port_string)) {
+
+    int port_length = snprintf(
+        port_string,
+        sizeof(port_string),
+        "%u",
+        (unsigned)port
+    );
+
+    if (port_length <= 0 ||
+        (size_t)port_length >= sizeof(port_string)) {
         return TINY_NETWORK_INVALID_ARGUMENT;
     }
 
-    char *host_string = malloc(host_len + 1);
+    char *host_string = malloc(
+        host_len + 1
+    );
+
     if (!host_string) {
         return TINY_NETWORK_ALLOCATION_FAILED;
     }
 
-    memcpy(host_string, host, host_len);
+    memcpy(
+        host_string,
+        host,
+        host_len
+    );
+
     host_string[host_len] = '\0';
 
-    nw_endpoint_t endpoint = nw_endpoint_create_host(host_string, port_string);
-    free(host_string);
+    fprintf(
+        stderr,
+        "tiny_network: connecting to %s:%s\n",
+        host_string,
+        port_string
+    );
+
+    nw_endpoint_t endpoint =
+        nw_endpoint_create_host(
+            host_string,
+            port_string
+        );
 
     if (!endpoint) {
+        fprintf(
+            stderr,
+            "tiny_network: failed to create endpoint\n"
+        );
+
+        free(host_string);
+
         return TINY_NETWORK_CONNECTION_FAILED;
     }
 
-    nw_parameters_t parameters = nw_parameters_create_secure_tcp(
-        NW_PARAMETERS_DEFAULT_CONFIGURATION,
-        NW_PARAMETERS_DEFAULT_CONFIGURATION
-    );
+    /*
+     * Create TLS over TCP.
+     */
+    nw_parameters_t parameters =
+        nw_parameters_create_secure_tcp(
+            NW_PARAMETERS_DEFAULT_CONFIGURATION,
+            NW_PARAMETERS_DEFAULT_CONFIGURATION
+        );
+
     if (!parameters) {
+        fprintf(
+            stderr,
+            "tiny_network: failed to create TLS parameters\n"
+        );
+
         nw_release(endpoint);
+        free(host_string);
+
         return TINY_NETWORK_CONNECTION_FAILED;
     }
 
-    nw_connection_t connection = nw_connection_create(endpoint, parameters);
+    /*
+     * Explicitly set TLS server name (SNI).
+     *
+     * This is important for HTTPS connections to hosts such as
+     * api.github.com.
+     */
+    nw_protocol_stack_t protocol_stack =
+        nw_parameters_copy_default_protocol_stack(
+            parameters
+        );
+
+    if (!protocol_stack) {
+        fprintf(
+            stderr,
+            "tiny_network: failed to get protocol stack\n"
+        );
+
+        nw_release(parameters);
+        nw_release(endpoint);
+        free(host_string);
+
+        return TINY_NETWORK_CONNECTION_FAILED;
+    }
+
+    nw_protocol_options_t tls_options =
+        nw_protocol_stack_copy_transport_protocol(
+            protocol_stack
+        );
+
+    if (!tls_options) {
+        fprintf(
+            stderr,
+            "tiny_network: failed to get TLS options\n"
+        );
+
+        nw_release(protocol_stack);
+        nw_release(parameters);
+        nw_release(endpoint);
+        free(host_string);
+
+        return TINY_NETWORK_CONNECTION_FAILED;
+    }
+
+    nw_tls_options_set_server_name(
+        tls_options,
+        host_string
+    );
+
+    nw_release(tls_options);
+    nw_release(protocol_stack);
+
+    nw_connection_t connection =
+        nw_connection_create(
+            endpoint,
+            parameters
+        );
+
     nw_release(parameters);
     nw_release(endpoint);
+    free(host_string);
 
     if (!connection) {
+        fprintf(
+            stderr,
+            "tiny_network: failed to create connection\n"
+        );
+
         return TINY_NETWORK_CONNECTION_FAILED;
     }
 
@@ -230,13 +478,37 @@ int tiny_network_https_get(
 
     if (!state.semaphore) {
         nw_release(connection);
+
         return TINY_NETWORK_CONNECTION_FAILED;
     }
 
-    nw_connection_set_queue(connection, dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0));
-    nw_connection_set_state_changed_handler(connection, ^(nw_connection_state_t connection_state, nw_error_t error) {
-        tiny_state_changed(connection, connection_state, error, &state);
-    });
+    nw_connection_set_queue(
+        connection,
+        dispatch_get_global_queue(
+            QOS_CLASS_DEFAULT,
+            0
+        )
+    );
+
+    nw_connection_set_state_changed_handler(
+        connection,
+        ^(
+            nw_connection_state_t connection_state,
+            nw_error_t error
+        ) {
+            tiny_state_changed(
+                connection,
+                connection_state,
+                error,
+                &state
+            );
+        }
+    );
+
+    fprintf(
+        stderr,
+        "tiny_network: starting connection\n"
+    );
 
     nw_connection_start(connection);
 
@@ -245,54 +517,118 @@ int tiny_network_https_get(
         (int64_t)timeout_seconds * NSEC_PER_SEC
     );
 
-    if (dispatch_semaphore_wait(state.semaphore, timeout) != 0) {
-        state.error = TINY_NETWORK_TIMEOUT;
+    if (dispatch_semaphore_wait(
+            state.semaphore,
+            timeout
+        ) != 0) {
+
+        fprintf(
+            stderr,
+            "tiny_network: connection timeout\n"
+        );
+
+        state.error =
+            TINY_NETWORK_TIMEOUT;
+
         nw_connection_cancel(connection);
-        dispatch_semaphore_wait(state.semaphore, DISPATCH_TIME_FOREVER);
+
+        dispatch_semaphore_wait(
+            state.semaphore,
+            DISPATCH_TIME_FOREVER
+        );
+
         free(state.data);
         nw_release(connection);
         dispatch_release(state.semaphore);
+
         return TINY_NETWORK_TIMEOUT;
     }
 
-    if (!state.ready || state.error != TINY_NETWORK_OK) {
-        int error = state.error ? state.error : TINY_NETWORK_CONNECTION_FAILED;
+    if (!state.ready ||
+        state.error != TINY_NETWORK_OK) {
+
+        int error =
+            state.error
+                ? state.error
+                : TINY_NETWORK_CONNECTION_FAILED;
+
+        fprintf(
+            stderr,
+            "tiny_network: connection setup failed, error=%d\n",
+            error
+        );
+
         nw_connection_cancel(connection);
-        dispatch_semaphore_wait(state.semaphore, DISPATCH_TIME_FOREVER);
+
+        dispatch_semaphore_wait(
+            state.semaphore,
+            DISPATCH_TIME_FOREVER
+        );
+
         free(state.data);
         nw_release(connection);
         dispatch_release(state.semaphore);
+
         return error;
     }
 
-    uint8_t *request_copy = malloc(request_len);
+    uint8_t *request_copy =
+        malloc(request_len);
+
     if (!request_copy) {
         nw_connection_cancel(connection);
-        dispatch_semaphore_wait(state.semaphore, DISPATCH_TIME_FOREVER);
+
+        dispatch_semaphore_wait(
+            state.semaphore,
+            DISPATCH_TIME_FOREVER
+        );
+
         free(state.data);
         nw_release(connection);
         dispatch_release(state.semaphore);
+
         return TINY_NETWORK_ALLOCATION_FAILED;
     }
 
-    memcpy(request_copy, request, request_len);
-
-    dispatch_data_t request_data = dispatch_data_create(
+    memcpy(
         request_copy,
-        request_len,
-        dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0),
-        DISPATCH_DATA_DESTRUCTOR_DEFAULT
+        request,
+        request_len
     );
+
+    dispatch_data_t request_data =
+        dispatch_data_create(
+            request_copy,
+            request_len,
+            dispatch_get_global_queue(
+                QOS_CLASS_DEFAULT,
+                0
+            ),
+            DISPATCH_DATA_DESTRUCTOR_DEFAULT
+        );
 
     if (!request_data) {
         free(request_copy);
+
         nw_connection_cancel(connection);
-        dispatch_semaphore_wait(state.semaphore, DISPATCH_TIME_FOREVER);
+
+        dispatch_semaphore_wait(
+            state.semaphore,
+            DISPATCH_TIME_FOREVER
+        );
+
         free(state.data);
         nw_release(connection);
         dispatch_release(state.semaphore);
+
         return TINY_NETWORK_ALLOCATION_FAILED;
     }
+
+    fprintf(
+        stderr,
+        "tiny_network: sending request (%zu bytes)\n",
+        request_len
+    );
 
     nw_connection_send(
         connection,
@@ -300,34 +636,77 @@ int tiny_network_https_get(
         NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT,
         true,
         ^(nw_error_t error) {
-            tiny_send_complete(error, &state);
+            tiny_send_complete(
+                error,
+                &state
+            );
         }
     );
 
     dispatch_release(request_data);
 
-    if (dispatch_semaphore_wait(state.semaphore, timeout) != 0) {
-        state.error = TINY_NETWORK_TIMEOUT;
+    if (dispatch_semaphore_wait(
+            state.semaphore,
+            timeout
+        ) != 0) {
+
+        fprintf(
+            stderr,
+            "tiny_network: request timeout\n"
+        );
+
+        state.error =
+            TINY_NETWORK_TIMEOUT;
+
         nw_connection_cancel(connection);
-        dispatch_semaphore_wait(state.semaphore, DISPATCH_TIME_FOREVER);
+
+        dispatch_semaphore_wait(
+            state.semaphore,
+            DISPATCH_TIME_FOREVER
+        );
+
         free(state.data);
         nw_release(connection);
         dispatch_release(state.semaphore);
+
         return TINY_NETWORK_TIMEOUT;
     }
 
-    if (state.error != TINY_NETWORK_OK || !state.complete) {
-        int error = state.error ? state.error : TINY_NETWORK_RECEIVE_FAILED;
+    if (state.error != TINY_NETWORK_OK ||
+        !state.complete) {
+
+        int error =
+            state.error
+                ? state.error
+                : TINY_NETWORK_RECEIVE_FAILED;
+
+        fprintf(
+            stderr,
+            "tiny_network: request failed, error=%d\n",
+            error
+        );
+
         nw_connection_cancel(connection);
-        dispatch_semaphore_wait(state.semaphore, DISPATCH_TIME_FOREVER);
+
+        dispatch_semaphore_wait(
+            state.semaphore,
+            DISPATCH_TIME_FOREVER
+        );
+
         free(state.data);
         nw_release(connection);
         dispatch_release(state.semaphore);
+
         return error;
     }
 
     nw_connection_cancel(connection);
-    dispatch_semaphore_wait(state.semaphore, DISPATCH_TIME_FOREVER);
+
+    dispatch_semaphore_wait(
+        state.semaphore,
+        DISPATCH_TIME_FOREVER
+    );
+
     nw_release(connection);
     dispatch_release(state.semaphore);
 
