@@ -2,13 +2,13 @@ use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 use std::sync::{Arc, Once};
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 use rustls::pki_types::ServerName;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
 #[cfg(windows)]
@@ -17,10 +17,10 @@ use native_tls::TlsConnector;
 const MAX_REDIRECTS: usize = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 static RUSTLS_INIT: Once = Once::new();
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 fn init_rustls() {
     RUSTLS_INIT.call_once(|| {
         rustls::crypto::ring::default_provider()
@@ -29,7 +29,7 @@ fn init_rustls() {
     });
 }
 
-#[cfg(all(feature = "own-cert-list", not(windows)))]
+#[cfg(all(feature = "own-cert-list", target_os = "linux"))]
 mod own_certs {
     include!(env!("TINY_HTTP_CLIENT_OWN_CERTS"));
 }
@@ -74,7 +74,7 @@ pub fn get_with_headers(
     url: &str,
     headers: &[(&str, &str)],
 ) -> Result<Response, Box<dyn std::error::Error>> {
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     init_rustls();
 
     get_redirect(url, headers, 0)
@@ -224,7 +224,30 @@ fn get_https(
     read_response(&mut stream)
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+fn load_root_certificates() -> Result<RootCertStore, Box<dyn std::error::Error>> {
+    let mut root_store = RootCertStore::empty();
+
+    #[cfg(feature = "own-cert-list")]
+    {
+        for cert in own_certs::load() {
+            root_store.add(cert)?;
+        }
+    }
+
+    #[cfg(not(feature = "own-cert-list"))]
+    {
+        root_store.extend(
+            webpki_roots::TLS_SERVER_ROOTS
+                .iter()
+                .cloned(),
+        );
+    }
+
+    Ok(root_store)
+}
+
+#[cfg(target_os = "linux")]
 fn get_https(
     url: &ParsedUrl,
     headers: &[(&str, &str)],
@@ -264,29 +287,94 @@ fn get_https(
     read_response(&mut stream)
 }
 
-#[cfg(not(windows))]
-fn load_root_certificates(
-) -> Result<RootCertStore, Box<dyn std::error::Error>> {
-    let mut root_store = RootCertStore::empty();
+#[cfg(target_os = "macos")]
+fn get_https(
+    url: &ParsedUrl,
+    headers: &[(&str, &str)],
+) -> Result<Response, Box<dyn std::error::Error>> {
+    let request = build_request(&url.host, &url.path, headers)?;
 
-    #[cfg(feature = "own-cert-list")]
-    {
-        for cert in own_certs::load() {
-            root_store.add(cert)?;
+    let mut response_ptr = std::ptr::null_mut();
+    let mut response_len = 0usize;
+
+    let result = unsafe {
+        tiny_network_https_get(
+            url.host.as_ptr(),
+            url.host.len(),
+            url.port,
+            request.as_ptr(),
+            request.len(),
+            &mut response_ptr,
+            &mut response_len,
+            CONNECT_TIMEOUT.as_secs() as u32,
+        )
+    };
+
+    if result != 0 {
+        return Err(format!(
+            "macOS Network.framework HTTPS request failed: {}",
+            result
+        )
+        .into());
+    }
+
+    let response = unsafe {
+        let bytes = std::slice::from_raw_parts(response_ptr, response_len);
+        parse_response(bytes)
+    };
+
+    unsafe {
+        tiny_network_free(response_ptr.cast());
+    }
+
+    response
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn tiny_network_https_get(
+        host: *const u8,
+        host_len: usize,
+        port: u16,
+        request: *const u8,
+        request_len: usize,
+        response: *mut *mut u8,
+        response_len: *mut usize,
+        timeout_seconds: u32,
+    ) -> i32;
+
+    fn tiny_network_free(ptr: *mut std::ffi::c_void);
+}
+
+#[cfg(target_os = "macos")]
+fn build_request(
+    host: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut request = Vec::with_capacity(256);
+
+    write!(
+        &mut request,
+        "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: peers_updater\r\nAccept: */*\r\nConnection: close\r\n",
+        path, host
+    )?;
+
+    for (name, value) in headers {
+        if name.contains('\r')
+            || name.contains('\n')
+            || value.contains('\r')
+            || value.contains('\n')
+        {
+            return Err("invalid HTTP header".into());
         }
+
+        write!(&mut request, "{}: {}\r\n", name, value)?;
     }
 
-    #[cfg(all(
-        not(feature = "own-cert-list"),
-        not(target_os = "windows")
-    ))]
-    {
-        use webpki_roots::TLS_SERVER_ROOTS;
+    request.extend_from_slice(b"\r\n");
 
-        root_store.extend(TLS_SERVER_ROOTS.iter().cloned());
-    }
-
-    Ok(root_store)
+    Ok(request)
 }
 
 fn write_request<S: Write>(
@@ -330,10 +418,12 @@ fn write_request<S: Write>(
 
 fn read_response<R: Read>(stream: &mut R) -> Result<Response, Box<dyn std::error::Error>> {
     let mut data = Vec::new();
-
     stream.read_to_end(&mut data)?;
+    parse_response(&data)
+}
 
-    let header_end = find_header_end(&data).ok_or("invalid HTTP response: headers not found")?;
+fn parse_response(data: &[u8]) -> Result<Response, Box<dyn std::error::Error>> {
+    let header_end = find_header_end(data).ok_or("invalid HTTP response: headers not found")?;
 
     let header_bytes = &data[..header_end];
 

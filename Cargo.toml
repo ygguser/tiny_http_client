@@ -10,6 +10,7 @@ include = [
     "src/**/*",
     "certs/*.der",
     "build.rs",
+    "macos/network_tls.c",
     "Cargo.toml",
     "LICENSE",
     "README.md",
@@ -19,7 +20,7 @@ include = [
 default = []
 own-cert-list = []
 
-[target.'cfg(not(windows))'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
 webpki-roots = { version = "0.26", default-features = false }
 

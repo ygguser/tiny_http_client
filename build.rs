@@ -1,20 +1,48 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
-fn main() {
-    println!("cargo:rerun-if-changed=certs");
+fn build_macos_network_tls() {
+    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let source = manifest_dir.join("macos/network_tls.c");
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let object = out_dir.join("network_tls.o");
+    let library = out_dir.join("libtiny_network_tls.a");
 
-    if env::var_os("CARGO_FEATURE_OWN_CERT_LIST").is_none() || cfg!(windows) {
-        return;
+    let status = Command::new("xcrun")
+        .args(["--sdk", "macosx", "clang", "-fblocks", "-c"])
+        .arg(&source)
+        .args(["-o"])
+        .arg(&object)
+        .status()
+        .expect("failed to execute xcrun clang");
+
+    if !status.success() {
+        panic!("failed to compile macOS Network.framework TLS shim");
     }
 
+    let status = Command::new("xcrun")
+        .args(["--sdk", "macosx", "ar", "rcs"])
+        .arg(&library)
+        .arg(&object)
+        .status()
+        .expect("failed to execute xcrun ar");
+
+    if !status.success() {
+        panic!("failed to create macOS Network.framework TLS library");
+    }
+
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    println!("cargo:rustc-link-lib=static=tiny_network_tls");
+    println!("cargo:rustc-link-lib=framework=Network");
+    println!("cargo:rerun-if-changed={}", source.display());
+}
+
+fn build_own_cert_list() {
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-
     let certs_dir = manifest_dir.join("certs");
-
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
     let output = out_dir.join("own_certs.rs");
 
     let mut entries = Vec::new();
@@ -39,7 +67,6 @@ fn main() {
         }
 
         let path_str = path.to_str().expect("certificate path is not valid UTF-8");
-
         entries.push(path_str.to_owned());
     }
 
@@ -53,11 +80,8 @@ fn main() {
     }
 
     let mut code = String::new();
-
     code.push_str("use rustls::pki_types::CertificateDer;\n\n");
-
     code.push_str("pub fn load() -> Vec<CertificateDer<'static>> {\n");
-
     code.push_str("    vec![\n");
 
     for path in entries {
@@ -75,4 +99,16 @@ fn main() {
         "cargo:rustc-env=TINY_HTTP_CLIENT_OWN_CERTS={}",
         output.display()
     );
+}
+
+fn main() {
+    println!("cargo:rerun-if-changed=certs");
+
+    if cfg!(target_os = "macos") {
+        build_macos_network_tls();
+    }
+
+    if env::var_os("CARGO_FEATURE_OWN_CERT_LIST").is_some() && cfg!(target_os = "linux") {
+        build_own_cert_list();
+    }
 }
