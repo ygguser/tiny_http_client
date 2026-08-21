@@ -3,8 +3,11 @@ name = "tiny_http_client"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Tiny synchronous HTTP/HTTPS client"
+description = "Tiny synchronous HTTP/HTTPS GET and POST client"
 repository = "https://github.com/ygguser/tiny_http_client"
+readme = "README.md"
+keywords = ["http", "https", "client", "tls", "networking"]
+categories = ["network-programming"]
 build = "build.rs"
 include = [
     "src/**/*",
