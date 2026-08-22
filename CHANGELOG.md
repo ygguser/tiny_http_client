@@ -25,11 +25,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/).
 ### Security
 - in case of vulnerabilities.
 -->
-## [0.1.2] - 2026-08-22
+## [0.1.3] - 2026-08-22
 
 ### Changed
 
 - Minor cosmetic fixes
+- Fixes related to publication on [crates.io](https://crates.io/crates/tiny_http_client) and [docs.rs](https://docs.rs/crate/tiny_http_client)
 
 ## [0.1.0] - 2026-08-21
 
