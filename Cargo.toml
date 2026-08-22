@@ -26,7 +26,7 @@ linux-native-tls = ["dep:native-tls"]
 linux-own-cert-list = []
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["http-get", "http-post", "linux-native-tls"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
