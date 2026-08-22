@@ -25,6 +25,9 @@ http-post = []
 linux-native-tls = ["dep:native-tls"]
 linux-own-cert-list = []
 
+[package.metadata.docs.rs]
+all-features = true
+
 [target.'cfg(target_os = "linux")'.dependencies]
 rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
 webpki-roots = { version = "0.26", default-features = false }
