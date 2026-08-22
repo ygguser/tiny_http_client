@@ -25,6 +25,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/).
 ### Security
 - in case of vulnerabilities.
 -->
+## [0.1.1] - 2026-08-22
+
+### Changed
+
+- Minor cosmetic fixes
+
 ## [0.1.0] - 2026-08-21
 
 ### Added
