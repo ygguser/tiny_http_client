@@ -38,7 +38,7 @@ To enable both GET and POST:
 ```toml
 [dependencies]
 tiny_http_client = {
-    git = "https://github.com/ygguser/tiny_http_client",
+    version = "0.1",
     features = ["http-get", "http-post"]
 }
 ```
@@ -48,7 +48,7 @@ If only POST is required:
 ```toml
 [dependencies]
 tiny_http_client = {
-    git = "https://github.com/ygguser/tiny_http_client",
+    version = "0.1",
     default-features = false,
     features = ["http-post"]
 }
@@ -60,13 +60,7 @@ Add the following dependency to `Cargo.toml`:
 
 ```toml
 [dependencies]
-tiny_http_client = { git = "https://github.com/ygguser/tiny_http_client" }
-```
-Or use a specific revision:
-
-```toml
-[dependencies]
-tiny_http_client = { git = "https://github.com/ygguser/tiny_http_client", rev = "26f03556e38417c1366ab86e08daeaebd95c7604" }
+tiny_http_client = { version = "0.1" }
 ```
 
 ## Linux native TLS
@@ -76,7 +70,7 @@ On Linux, enable the `linux-native-tls` feature to use `native-tls` and the oper
 ```toml
 [dependencies]
 tiny_http_client = {
-    git = "https://github.com/ygguser/tiny_http_client",
+    version = "0.1",
     default-features = false,
     features = ["http-get", "linux-native-tls"]
 }
@@ -94,7 +88,7 @@ Enable the feature in `Cargo.toml`:
 ```toml
 [dependencies]
 tiny_http_client = {
-    git = "https://github.com/ygguser/tiny_http_client",
+    version = "0.1",
     features = ["linux-own-cert-list"]
 }
 ```
