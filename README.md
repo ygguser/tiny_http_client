@@ -1,5 +1,8 @@
 # tiny_http_client
 
+[![Crates.io](https://img.shields.io/crates/v/tiny_http_client?color=lightgreen)](https://crates.io/crates/tiny_http_client)
+[![License: MIT](https://img.shields.io/github/license/ygguser/tiny_http_client)](/LICENSE)
+
 A small synchronous HTTP/HTTPS GET/POST client written in Rust.
 
 `tiny_http_client` is designed for small applications and utilities that need basic HTTP/HTTPS functionality without pulling in a full-featured HTTP client stack.
